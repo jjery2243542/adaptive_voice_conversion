@@ -38,9 +38,19 @@ def append_cond(x, cond):
     out = torch.cat([x, cond_exp], dim=1)
     return out
 
+def conv_bank(x, module_list, act):
+    outs = []
+    for layer in module_list:
+        out = pad_layer(x, layer)
+        outs.append(out)
+    outs = torch.cat(outs, dim=1)
+    outs = act(outs)
+    out = torch.cat([outs, x], dim=1)
+    return out
+
 # Conv_blocks followed by dense blocks
 class Encoder(nn.Module):
-    def __init__(self, c_in, c_h, c_out, kernel_size, 
+    def __init__(self, c_in, c_h, c_out, kernel_size, bank_size, bank_scale, 
             n_conv_blocks, subsample, n_dense_blocks, act, dropout_rate):
         super(Encoder, self).__init__()
 
@@ -48,6 +58,8 @@ class Encoder(nn.Module):
         self.c_h = c_h
         self.c_out = c_out
         self.kernel_size = kernel_size
+        self.bank_size = bank_size
+        self.bank_scale = bank_scale
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
@@ -57,7 +69,11 @@ class Encoder(nn.Module):
             self.act = nn.LeakyReLU()
         else:
             self.act = nn.ReLU()
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
+        self.conv_bank = nn.ModuleList(
+                [nn.Conv1d(c_in, c_h, kernel_size=k) for k in \
+                range(bank_scale, bank_size + 1, bank_scale)])
+        in_channels = c_h * (bank_size // bank_scale) + c_in
+        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
@@ -72,8 +88,9 @@ class Encoder(nn.Module):
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
-        # first convolution layer
-        out = pad_layer(x, self.in_conv_layer)
+        out = conv_bank(x, self.conv_bank, act=self.act)
+        # dimension reduction layer
+        out = pad_layer(out, self.in_conv_layer)
 
         # convolution blocks
         for l in range(self.n_conv_blocks):
@@ -172,7 +189,8 @@ class Decoder(nn.Module):
         return out
 
 class AE(nn.Module):
-    def __init__(self, c_in, c_h, c_out, c_cond, kernel_size, 
+    def __init__(self, c_in, c_h, c_out, c_cond, kernel_size,
+            bank_size, bank_scale,
             s_enc_n_conv_blocks, s_enc_n_dense_blocks, 
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
             s_subsample, d_subsample,  
@@ -180,12 +198,14 @@ class AE(nn.Module):
         super(AE, self).__init__()
         self.static_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_cond, 
                 kernel_size=kernel_size, 
+                bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=s_enc_n_conv_blocks, 
                 subsample=s_subsample, 
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
         self.dynamic_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_h, 
                 kernel_size=kernel_size, 
+                bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=d_enc_n_conv_blocks, 
                 subsample=d_subsample, 
                 n_dense_blocks=d_enc_n_dense_blocks, 
@@ -261,8 +281,9 @@ class LatentDiscriminator(nn.Module):
 
 
 if __name__ == '__main__':
-    ae = AE(c_in=1, c_h=32, c_out=1, c_cond=32, 
+    ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 
             kernel_size=60, 
+            bank_size=150, bank_scale=20, 
             s_enc_n_conv_blocks=3, 
             s_enc_n_dense_blocks=2, 
             d_enc_n_conv_blocks=5, 
@@ -273,7 +294,8 @@ if __name__ == '__main__':
             dec_n_dense_blocks=2, 
             upsample=[1, 1, 2, 2, 2], 
             act='lrelu', dropout_rate=0.5).cuda()
-    D = LatentDiscriminator(input_size=1000, c_in=64, c_h=256, kernel_size=60, 
+    print(ae)
+    D = LatentDiscriminator(input_size=1000, c_in=128, c_h=256, kernel_size=60, 
             n_conv_layers=4, d_h=512, act='lrelu', dropout_rate=0.5).cuda()
     data = torch.randn(5, 1, 8000, device='cuda')
     data_pos = torch.randn(5, 1, 8000, device='cuda')
