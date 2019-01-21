@@ -7,6 +7,7 @@ import os
 from collections import defaultdict
 import re
 import numpy as np
+import json 
 
 def read_speaker_info(speaker_info_path):
     speaker_ids = []
@@ -85,6 +86,9 @@ if __name__ == '__main__':
             mean = all_train_data.mean()
             std = all_train_data.std()
             print(f'mean={mean:.3f}, std={std:.3f}')
+            attr = {'mean': mean, 'std': std}
+            with open(os.path.join(output_dir, 'mean_std.json')) as f:
+                json.dump(attr, f)
         for key, value in data.items():
             value = (value - mean) / std
             data[key] = value
