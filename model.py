@@ -48,6 +48,14 @@ def conv_bank(x, module_list, act):
     out = torch.cat([outs, x], dim=1)
     return out
 
+def get_act(act):
+    if act == 'relu':
+        return nn.ReLU()
+    elif act == 'lrelu':
+        return nn.LeakyReLU()
+    else:
+        return nn.ReLU()
+
 # Conv_blocks followed by dense blocks
 class Encoder(nn.Module):
     def __init__(self, c_in, c_h, c_out, kernel_size, bank_size, bank_scale, 
@@ -63,12 +71,7 @@ class Encoder(nn.Module):
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
-        if act == 'relu':
-            self.act = nn.ReLU()
-        elif act == 'lrelu':
-            self.act = nn.LeakyReLU()
-        else:
-            self.act = nn.ReLU()
+        self.act = get_act(act)
         self.conv_bank = nn.ModuleList(
                 [nn.Conv1d(c_in, c_h, kernel_size=k) for k in \
                 range(bank_scale, bank_size + 1, bank_scale)])
@@ -131,12 +134,7 @@ class Decoder(nn.Module):
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
-        if act == 'relu':
-            self.act = nn.ReLU()
-        elif act == 'lrelu':
-            self.act = nn.LeakyReLU()
-        else:
-            self.act = nn.ReLU()
+        self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
@@ -246,11 +244,7 @@ class LatentDiscriminator(nn.Module):
         self.kernel_size = kernel_size
         self.n_conv_layers = n_conv_layers
         self.d_h = d_h
-        if act == 'relu':
-            self.act = nn.ReLU()
-        elif act == 'lrelu':
-            self.act = nn.LeakyReLU()
-
+        self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
                 for _ in range(n_conv_layers)])
@@ -276,7 +270,7 @@ class LatentDiscriminator(nn.Module):
             out = layer(out)
             out = self.act(out)
             y = self.dropout_layer(out)
-        out = F.sigmoid(y.squeeze(dim=1))
+        out = y.squeeze(dim=1)
         return out
 
 

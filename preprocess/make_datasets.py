@@ -87,7 +87,7 @@ if __name__ == '__main__':
             std = all_train_data.std()
             print(f'mean={mean:.3f}, std={std:.3f}')
             attr = {'mean': mean, 'std': std}
-            with open(os.path.join(output_dir, 'mean_std.json')) as f:
+            with open(os.path.join(output_dir, 'mean_std.json'), 'w') as f:
                 json.dump(attr, f)
         for key, value in data.items():
             value = (value - mean) / std
