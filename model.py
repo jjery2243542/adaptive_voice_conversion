@@ -79,8 +79,8 @@ class Encoder(nn.Module):
         self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
-        self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
-                in range(n_conv_blocks)])
+        self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
+            for sub, _ in zip(subsample, range(n_conv_blocks))])
         self.conv_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_blocks)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
@@ -104,9 +104,9 @@ class Encoder(nn.Module):
             y = self.act(y)
             y = self.conv_norm_layers[l](y)
             y = self.dropout_layer(y)
-            out = y + out
             if self.subsample[l] > 1:
                 out = F.avg_pool1d(out, kernel_size=self.subsample[l])
+            out = y + out
 
         for l in range(self.n_dense_blocks):
             y = self.first_dense_layers[l](out)
@@ -256,8 +256,9 @@ class LatentDiscriminator(nn.Module):
         self.dense_layers = nn.ModuleList([nn.Linear(self.dense_input_size, d_h), nn.Linear(d_h, 1)]) 
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def forward(self, x):
-        out = pad_layer(x, self.in_conv_layer)
+    def forward(self, x, y):
+        inp = torch.cat([x, y], dim=1)
+        out = pad_layer(inp, self.in_conv_layer)
         for l in range(self.n_conv_layers):
             out = pad_layer(out, self.conv_layers[l])
             out = self.act(out)
@@ -291,7 +292,7 @@ if __name__ == '__main__':
     print(ae)
     D = LatentDiscriminator(input_size=1000, c_in=128, c_h=256, kernel_size=60, 
             n_conv_layers=4, d_h=512, act='lrelu', dropout_rate=0.5).cuda()
-    data = torch.randn(5, 1, 8000, device='cuda')
+    data = torch.randn(5, 1, 2000, device='cuda')
     data_pos = torch.randn(5, 1, 8000, device='cuda')
     data_neg = torch.randn(5, 1, 8000, device='cuda')
     enc, enc_pos, enc_neg, dec, emb, emb_pos = ae(data, data_pos, data_neg)

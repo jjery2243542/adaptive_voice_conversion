@@ -5,11 +5,15 @@ import editdistance
 import torch.nn as nn
 import torch.nn.init as init
 
-class AttrDict(object):
-    def __init__(self, _dict):
-        self._dict = _dict
-        for key, val in self._dict.items():
-            setattr(self, str(key), val)
+
+class NoiseAdder(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        noise = tensor.new(*tensor.size()).normal_(self.mean, self.std)
+        return tensor + noise
 
 def sample_gumbel(size, eps=1e-20):
     u = torch.rand(size)
@@ -154,6 +158,9 @@ class Logger(object):
 
     def scalar_summary(self, tag, value, step):
         self.writer.add_scalar(tag, value, step)
+
+    def scalars_summary(self, tag, dictionary, step):
+        self.writer.add_scalars(tag, dictionary, step)
 
     def text_summary(self, tag, value, step):
         self.writer.add_text(tag, value, step)

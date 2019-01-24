@@ -8,12 +8,15 @@ import torch
 from torch.utils.data import DataLoader
 
 def _collate_fn(l):
-    data_tensor = torch.from_numpy(np.array([[segment for segment in data] for data in zip(*l)]))
+    #data_tensor = torch.from_numpy(np.array([[segment for segment in data] for data in zip(*l)]))
+    data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1).unsqueeze(dim=2)
     segment, segment_pos, segment_neg = data_tensor
     return segment, segment_pos, segment_neg
 
 def get_data_loader(dataset, batch_size, shuffle=True, num_workers=4, drop_last=False):
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, collate_fn=_collate_fn)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, 
+            num_workers=num_workers, collate_fn=_collate_fn, pin_memory=True)
+    return dataloader
 
 class PickleDataset(Dataset):
     def __init__(self, pickle_path, sample_index_path, segment_size):

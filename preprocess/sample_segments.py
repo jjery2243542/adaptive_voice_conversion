@@ -29,7 +29,7 @@ if __name__ == '__main__':
         pos_utt_id = utt_list[utt_ind]
         neg_utt_id = random.choice(utt_list[:utt_ind] + utt_list[utt_ind + 1:])
         t1 = random.randint(0, len(data[pos_utt_id]) - 2 * segment_size)
-        t2 = random.randint(t1 + segment_size, len(data[pos_utt_id] - segment_size))
+        t2 = random.randint(t1 + segment_size, len(data[pos_utt_id]) - segment_size)
         # random swap t1, t2
         t1, t2 = random.sample([t1, t2], k=2)
         t_neg = random.randint(0, len(data[neg_utt_id]) - segment_size)
