@@ -52,14 +52,14 @@ class Solver(object):
         return
 
     def load_model(self, load_opt, load_dis):
-        print(f'Load model from {args.load_model_path}')
-        self.model.load_state_dict(torch.load(f'{args.load_model_path}.ckpt'))
+        print(f'Load model from {self.args.load_model_path}')
+        self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
         if load_dis:
-            self.discr.load_state_dict(torch.load(f'{args.load_model_path}.discr'))
+            self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
-            self.gen_opt.load_state_dict(torch.load(f'{args.load_model_path}.opt'))
+            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
         if load_dis and load_opt:
-            self.dis_opt.load_state_dict(torch.load(f'{args.load_model_path}.discr.opt'))
+            self.dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
 
     def get_data_loaders(self):
@@ -266,7 +266,7 @@ class Solver(object):
     def dis_pretrain(self, n_iterations):
         for iteration in range(n_iterations):
             data = next(self.train_iter)
-            meta = self.dis_step(data, lambda_dis=0)
+            meta = self.dis_step(data, lambda_dis=1.0)
             self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
             loss_pos = meta['loss_pos']

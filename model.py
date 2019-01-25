@@ -267,13 +267,13 @@ class LatentDiscriminator(nn.Module):
 
         # flatten the output
         out = out.view(out.size(0), -1)
-        for layer in self.dense_layers:
-            out = layer(out)
-            out = self.act(out)
-            y = self.dropout_layer(out)
-        out = y.squeeze(dim=1)
-        return out
 
+        out = self.dense_layers[0](out)
+        out = self.act(out)
+        out = self.dropout_layer(out)
+        out = self.dense_layers[1](out)
+        out = out.squeeze(dim=1)
+        return out
 
 if __name__ == '__main__':
     ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 
