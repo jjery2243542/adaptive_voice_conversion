@@ -45,9 +45,9 @@ class Solver(object):
         torch.save(self.dis_opt.state_dict(), f'{self.args.store_model_path}-{iteration}.{stage}.discr.opt')
 
     def save_config(self):
-        with open(f'{self.args.store_model_path}.config.yaml') as f:
+        with open(f'{self.args.store_model_path}.config.yaml', 'w') as f:
             yaml.dump(vars(self.config))
-        with open(f'{self.args.store_model_path}.args.yaml') as f:
+        with open(f'{self.args.store_model_path}.args.yaml', 'w') as f:
             yaml.dump(vars(self.args))
         return
 
@@ -231,8 +231,8 @@ class Solver(object):
         grad_norm = torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
         self.dis_opt.step()
 
-        pos_probs = F.sigmoid(pos_val)
-        neg_probs = F.sigmoid(neg_val)
+        pos_probs = torch.sigmoid(pos_val)
+        neg_probs = torch.sigmoid(neg_val)
 
         acc_pos = torch.mean((pos_probs >= 0.5).float())
         acc_neg = torch.mean((neg_probs < 0.5).float())
