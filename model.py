@@ -248,32 +248,37 @@ class LatentDiscriminator(nn.Module):
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
                 for _ in range(n_conv_layers)])
-        self.norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_layers)])
-        self.dense_input_size = input_size
-        for i in range(n_conv_layers):
-            self.dense_input_size = ceil(self.dense_input_size * 0.5)
-        self.dense_input_size *= c_h
-        self.dense_layers = nn.ModuleList([nn.Linear(self.dense_input_size, d_h), nn.Linear(d_h, 1)]) 
+        self.dense_layers = nn.ModuleList([nn.Linear(c_h * 2, d_h), nn.Linear(d_h, 1)]) 
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def forward(self, x, y):
-        inp = torch.cat([x, y], dim=1)
+    def conv_blocks(self, inp):
         out = pad_layer(inp, self.in_conv_layer)
         for l in range(self.n_conv_layers):
             out = pad_layer(out, self.conv_layers[l])
             out = self.act(out)
-            out = self.norm_layers[l](out)
             out = self.dropout_layer(out)
+        out = F.avg_pool1d(out, kernel_size=out.size(2))
+        out = out.squeeze(dim=2)
+        return out
 
-        # flatten the output
-        out = out.view(out.size(0), -1)
-
-        out = self.dense_layers[0](out)
+    def dense_blocks(self, inp):
+        out = self.dense_layers[0](inp)
         out = self.act(out)
         out = self.dropout_layer(out)
         out = self.dense_layers[1](out)
-        out = out.squeeze(dim=1)
         return out
+
+    def forward(self, x, x_pos, x_neg):
+        x_vec = self.conv_blocks(x)
+        x_pos_vec = self.conv_blocks(x_pos)
+        x_neg_vec = self.conv_blocks(x_neg)
+
+        fused_pos = torch.cat([x_vec, x_pos_vec], dim=1)
+        fused_neg = torch.cat([x_vec, x_neg_vec], dim=1)
+
+        pos_val = self.dense_blocks(fused_pos)
+        neg_val = self.dense_blocks(fused_neg)
+        return pos_val, neg_val
 
 if __name__ == '__main__':
     ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 

@@ -52,7 +52,7 @@ class Solver(object):
         return
 
     def load_model(self, load_opt, load_dis):
-        print(f'Load model from {self.args.load_model_path}')
+        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
         if load_dis:
             self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
@@ -110,9 +110,9 @@ class Solver(object):
 
         discr_input_size = self.config.segment_size / reduce(lambda x, y: x*y, self.config.d_subsample)
         self.discr = cc(LatentDiscriminator(input_size=discr_input_size,
-                c_in=self.config.c_h * 2, 
+                c_in=self.config.c_h, 
                 c_h=self.config.dis_c_h, 
-                kernel_size=self.config.kernel_size,
+                kernel_size=self.config.dis_kernel_size,
                 n_conv_layers=self.config.dis_n_conv_layers, 
                 d_h=self.config.dis_d_h, 
                 act=self.config.act, 
@@ -127,41 +127,41 @@ class Solver(object):
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
         return
 
-    def val_step(self, data):
-        self.model.eval()
-        x, x_pos, x_neg = [cc(tensor) for tensor in data]
-        enc, enc_pos, enc_neg, dec, emb, emb_pos = self.model(x, x_pos, x_neg)
+    # DEPRECATED
+    #def val_step(self, data):
+    #    self.model.eval()
+    #    x, x_pos, x_neg = [cc(tensor) for tensor in data]
+    #    enc, enc_pos, enc_neg, dec, emb, emb_pos = self.model(x, x_pos, x_neg)
 
-        loss_rec = torch.mean(torch.abs(x - dec))
-        loss_sim = torch.mean((enc_pos - enc) ** 2)
+    #    loss_rec = torch.mean(torch.abs(x - dec))
+    #    loss_sim = torch.mean((enc_pos - enc) ** 2)
 
-        with torch.no_grad():
-            pos_val = self.discr(enc, enc_pos)
-            neg_val = self.discr(enc, enc_neg)
+    #    with torch.no_grad():
+    #        pos_probs = self.discr(enc, enc_pos)
+    #        neg_probs = self.discr(enc, enc_neg)
 
-            zeros_label = pos_val.new_zeros(*pos_val.size())
-            ones_label = pos_val.new_ones(*pos_val.size())
+    #        zeros_label = pos_probs.new_zeros(*pos_probs.size())
+    #        ones_label = pos_probs.new_ones(*pos_probs.size())
 
-            loss_pos = F.binary_cross_entropy_with_logits(pos_val, ones_label)
-            loss_neg = F.binary_cross_entropy_with_logits(neg_val, zeros_label)
+    #        loss_pos = F.binary_cross_entropy(pos_probs, ones_label)
+    #        loss_neg = F.binary_cross_entropy(neg_probs, zeros_label)
 
-            loss_dis = loss_pos + loss_neg
+    #        loss_dis = loss_pos + loss_neg
 
-            acc_pos = torch.mean((F.sigmoid(pos_val) > 0.5).float())
-            acc_neg = torch.mean((F.sigmoid(neg_val) < 0.5).float())
-            acc = (acc_pos + acc_neg) / 2
+    #        acc_pos = torch.mean((pos_probs >= 0.5).float())
+    #        acc_neg = torch.mean((neg_probs < 0.5).float())
+    #        acc = (acc_pos + acc_neg) / 2
 
-        meta = {'loss_rec': loss_rec.item(),
-                'loss_sim': loss_sim.item(),
-                'loss_pos': loss_pos.item(),
-                'loss_neg': loss_neg.item(),
-                'loss_dis': loss_dis.item(),
-                'acc_pos': acc_pos.item(),
-                'acc_neg': acc_neg.item(),
-                'acc': acc.item()}
+    #    meta = {'loss_rec': loss_rec.item(),
+    #            'loss_sim': loss_sim.item(),
+    #            'loss_pos': loss_pos.item(),
+    #            'loss_neg': loss_neg.item(),
+    #            'loss_dis': loss_dis.item(),
+    #            'acc_pos': acc_pos.item(),
+    #            'acc_neg': acc_neg.item(),
+    #            'acc': acc.item()}
 
-        return meta
-
+    #    return meta
 
     def ae_step(self, data, lambda_sim, lambda_dis, is_pretrain):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
@@ -174,15 +174,18 @@ class Solver(object):
         loss_rec = torch.mean(torch.abs(x - dec))
         if not is_pretrain:
             loss_sim = torch.mean((enc_pos - enc) ** 2)
-            pos_val = self.discr(enc, enc_pos)
-            neg_val = self.discr(enc, enc_neg)
 
+            pos_val, neg_val = self.discr(enc, enc_pos, enc_neg)
+
+            ones_label = neg_val.new_ones(*neg_val.size())
             zeros_label = pos_val.new_zeros(*pos_val.size())
-            ones_label = pos_val.new_ones(*pos_val.size())
 
-            loss_pos = F.binary_cross_entropy_with_logits(pos_val, zeros_label)
-            loss_neg = F.binary_cross_entropy_with_logits(neg_val, ones_label)
-            loss_dis = loss_pos + loss_neg
+            criterion = nn.BCEWithLogitsLoss()
+
+            loss_pos = criterion(pos_val, zeros_label)
+            loss_neg = criterion(neg_val, ones_label)
+
+            loss_dis = (loss_pos + loss_neg) / 2
 
             loss = loss_rec + lambda_sim * loss_sim + lambda_dis * loss_dis
 
@@ -205,30 +208,33 @@ class Solver(object):
 
     def dis_step(self, data, lambda_dis):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
+
         with torch.no_grad():
-            if self.config.add_gaussian:
-                enc, enc_pos, enc_neg, dec, emb, emb_pos = \
-                        self.model(self.noise_adder(x), self.noise_adder(x_pos), self.noise_adder(x_neg))
-            else:
-                enc, enc_pos, enc_neg, dec, emb, emb_pos = self.model(x, x_pos, x_neg)
+            enc, enc_pos, enc_neg, dec, emb, emb_pos = self.model(x, x_pos, x_neg)
 
         # input for the discriminator
-        pos_val = self.discr(enc, enc_pos)
-        neg_val = self.discr(enc, enc_neg)
+        pos_val, neg_val = self.discr(enc, enc_pos, enc_neg)
 
-        zeros_label = pos_val.new_zeros(*pos_val.size())
         ones_label = pos_val.new_ones(*pos_val.size())
+        zeros_label = neg_val.new_zeros(*neg_val.size())
 
-        loss_pos = F.binary_cross_entropy_with_logits(pos_val, ones_label)
-        loss_neg = F.binary_cross_entropy_with_logits(neg_val, zeros_label)
+        criterion = nn.BCEWithLogitsLoss()
 
-        loss_dis = loss_pos + loss_neg
+        loss_pos = criterion(pos_val, ones_label)
+        loss_neg = criterion(neg_val, zeros_label)
+
+        loss_dis = (loss_pos + loss_neg) / 2
         loss = lambda_dis * loss_dis
+
+        self.dis_opt.zero_grad()
+        loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
+        self.dis_opt.step()
 
         pos_probs = F.sigmoid(pos_val)
         neg_probs = F.sigmoid(neg_val)
 
-        acc_pos = torch.mean((pos_probs > 0.5).float())
+        acc_pos = torch.mean((pos_probs >= 0.5).float())
         acc_neg = torch.mean((neg_probs < 0.5).float())
         acc = (acc_pos + acc_neg) / 2
 
@@ -240,11 +246,6 @@ class Solver(object):
                 'acc_pos': acc_pos.item(),
                 'acc_neg': acc_neg.item(),
                 'acc': acc.item()}
-
-        self.dis_opt.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
-        self.dis_opt.step()
 
         return meta
 
@@ -299,7 +300,7 @@ class Solver(object):
             # D step
             for dis_step in range(self.config.dis_steps):
                 data = next(self.train_iter)
-                dis_meta = self.dis_step(data, lambda_dis=lambda_dis)
+                dis_meta = self.dis_step(data, lambda_dis=1.0)
                 self.logger.scalars_summary(f'{self.args.tag}/dis_train', dis_meta, 
                         iteration * self.config.dis_steps + dis_step)
 
