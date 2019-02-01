@@ -1,6 +1,5 @@
 c_in: 1
 c_h: 128 
-c_cond: 64 
 kernel_size: 60
 bank_size: 320
 bank_scale: 40

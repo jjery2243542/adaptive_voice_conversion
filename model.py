@@ -32,10 +32,9 @@ def upsample(x, scale_factor=2):
 
 def append_cond(x, cond):
     # x = [batch_size, x_channels, length]
-    # cond = [batch_size, cond_channels]
+    # cond = [batch_size, x_channels]
     cond = cond.unsqueeze(dim=2)
-    cond_exp = cond.expand(cond.size(0), cond.size(1), x.size(2))
-    out = torch.cat([x, cond_exp], dim=1)
+    out = x + cond
     return out
 
 def conv_bank(x, module_list, act):
@@ -123,29 +122,28 @@ class Encoder(nn.Module):
 
 # Conv_blocks followed by dense blocks
 class Decoder(nn.Module):
-    def __init__(self, c_in, c_h, c_out, c_cond, kernel_size, 
+    def __init__(self, c_in, c_h, c_out, kernel_size, 
             n_conv_blocks, upsample, n_dense_blocks, act, dropout_rate):
         super(Decoder, self).__init__()
         self.c_in = c_in
         self.c_h = c_h
         self.c_out = c_out
-        self.c_cond = c_cond
         self.kernel_size = kernel_size
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
         self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
-        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=kernel_size) for _ \
+        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(\
-                [nn.Conv1d(c_h + c_cond, c_h * up, kernel_size=kernel_size) \
+                [nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.conv_norm_layers = nn.ModuleList(\
                 [nn.InstanceNorm1d(c_h * up) for _, up in zip(range(n_conv_blocks), self.upsample)])
-        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
+        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
+        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
@@ -187,14 +185,14 @@ class Decoder(nn.Module):
         return out
 
 class AE(nn.Module):
-    def __init__(self, c_in, c_h, c_out, c_cond, kernel_size,
+    def __init__(self, c_in, c_h, c_out, kernel_size,
             bank_size, bank_scale,
             s_enc_n_conv_blocks, s_enc_n_dense_blocks, 
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
             s_subsample, d_subsample,  
             dec_n_conv_blocks, dec_n_dense_blocks, upsample, act, dropout_rate):
         super(AE, self).__init__()
-        self.static_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_cond, 
+        self.static_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_h, 
                 kernel_size=kernel_size, 
                 bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=s_enc_n_conv_blocks, 
@@ -208,7 +206,7 @@ class AE(nn.Module):
                 subsample=d_subsample, 
                 n_dense_blocks=d_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
-        self.decoder = Decoder(c_in=c_h, c_h=c_h, c_out=c_out, c_cond=c_cond, 
+        self.decoder = Decoder(c_in=c_h, c_h=c_h, c_out=c_out, 
                 kernel_size=kernel_size, 
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
