@@ -172,7 +172,7 @@ class Solver(object):
 
         loss_rec = torch.mean(torch.abs(x - dec))
         if not is_pretrain:
-            loss_sim = torch.mean((enc_pos - enc) ** 2)
+            loss_sim = torch.mean((emb_pos - emb) ** 2)
 
             pos_val, neg_val = self.discr(enc, enc_pos, enc_neg)
 
