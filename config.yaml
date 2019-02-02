@@ -14,10 +14,11 @@ dec_n_dense_blocks: 2
 upsample: [2, 1, 2, 1, 2, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
-dis_c_h: 256
+dis_c_h: 512
 dis_kernel_size: 20
 dis_n_conv_layers: 4
 dis_d_h: 512
+dis_n_dense_layers: 5
 dis_dropout_rate: 0.3
 segment_size: 2000
 batch_size: 16

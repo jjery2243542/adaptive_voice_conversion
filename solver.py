@@ -112,7 +112,8 @@ class Solver(object):
                 c_in=self.config.c_h, 
                 c_h=self.config.dis_c_h, 
                 kernel_size=self.config.dis_kernel_size,
-                n_conv_layers=self.config.dis_n_conv_layers, 
+                n_conv_layers=self.config.dis_n_conv_layers,
+                n_dense_layers=self.config.dis_n_dense_layers,
                 d_h=self.config.dis_d_h, 
                 act=self.config.act, 
                 dropout_rate=self.config.dis_dropout_rate))

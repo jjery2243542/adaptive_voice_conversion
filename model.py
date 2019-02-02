@@ -234,19 +234,23 @@ class AE(nn.Module):
         return enc, enc_pos, enc_neg, dec, emb, emb_pos
 
 class LatentDiscriminator(nn.Module):
-    def __init__(self, input_size, c_in, c_h, kernel_size, n_conv_layers, d_h, act, dropout_rate):
+    def __init__(self, input_size, c_in, c_h, kernel_size, 
+            n_conv_layers, n_dense_layers, d_h, act, dropout_rate):
         super(LatentDiscriminator, self).__init__()
         self.input_size = input_size
         self.c_in = c_in
         self.c_h = c_h
         self.kernel_size = kernel_size
         self.n_conv_layers = n_conv_layers
+        self.n_dense_layers = n_dense_layers
         self.d_h = d_h
         self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
                 for _ in range(n_conv_layers)])
-        self.dense_layers = nn.ModuleList([nn.Linear(c_h * 2, d_h), nn.Linear(d_h, 1)]) 
+        self.dense_layers = nn.ModuleList([nn.Linear(c_h * 2, d_h)] + 
+                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
+                [nn.Linear(d_h, 1)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def conv_blocks(self, inp):
@@ -260,10 +264,12 @@ class LatentDiscriminator(nn.Module):
         return out
 
     def dense_blocks(self, inp):
-        out = self.dense_layers[0](inp)
-        out = self.act(out)
-        out = self.dropout_layer(out)
-        out = self.dense_layers[1](out)
+        out = inp
+        for l in range(self.n_dense_layers - 1):
+            out = self.dense_layers[l](out)
+            out = self.act(out)
+            out = self.dropout_layer(out)
+        out = self.dense_layers[-1](out)
         return out
 
     def forward(self, x, x_pos, x_neg):
