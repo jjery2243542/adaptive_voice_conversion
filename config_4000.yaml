@@ -1,0 +1,37 @@
+c_in: 1
+c_h: 128 
+kernel_size: 60
+bank_size: 200
+bank_scale: 50
+s_enc_n_conv_blocks: 5 
+s_enc_n_dense_blocks: 2
+d_enc_n_conv_blocks: 8
+d_enc_n_dense_blocks: 4
+s_subsample: [2, 2, 2, 2, 2]
+d_subsample: [2, 2, 2, 1, 2, 1, 1, 1]
+dec_n_conv_blocks: 6
+dec_n_dense_blocks: 2
+upsample: [2, 2, 2, 2, 1, 1] 
+act: 'lrelu'
+dropout_rate: 0.5
+dis_c_h: 512
+dis_kernel_size: 10
+dis_n_conv_layers: 4
+dis_d_h: 512
+dis_n_dense_layers: 2
+dis_dropout_rate: 0.3
+segment_size: 4000
+batch_size: 16
+shuffle: True
+gen_lr: 0.0002
+dis_lr: 0.0001
+beta1: 0.5
+beta2: 0.99
+lambda_sim: 0.01
+lambda_dis: 0.0001
+add_gaussian: False
+gaussian_std: 0.01
+grad_norm: 5
+ae_steps: 1
+dis_steps: 1
+sched_iters: 10000
