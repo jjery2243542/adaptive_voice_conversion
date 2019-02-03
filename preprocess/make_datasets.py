@@ -29,7 +29,7 @@ def read_filenames(root_dir):
 
 def feature_extraction(wav_file, sr):
     y, sr = librosa.load(wav_file, sr)
-    y, _ = librosa.effects.trim(y)
+    y, _ = librosa.effects.trim(y, top_db=20)
     return y
 
 def my_std(data, mean):
@@ -86,7 +86,7 @@ if __name__ == '__main__':
             mean = all_train_data.mean()
             std = all_train_data.std()
             print(f'mean={mean:.3f}, std={std:.3f}')
-            attr = {'mean': mean, 'std': std}
+            attr = {'mean': float(mean), 'std': float(std)}
             with open(os.path.join(output_dir, 'mean_std.json'), 'w') as f:
                 json.dump(attr, f)
         for key, value in data.items():
