@@ -247,19 +247,16 @@ class AE(nn.Module):
             return enc, enc_pos, enc_neg 
         elif mode == 'raw_ae':
             # static operation
-            emb = self.static_operation(x)
-            emb_pos = self.static_operation(x_pos)
-            # stop gradient
             with torch.no_grad():
+                emb_pos = self.static_operation(x_pos)
                 emb_neg = self.static_operation(x_neg)
-            # dynamic operation
-            enc = self.dynamic_encoder(x)
-            enc_pos = self.dynamic_encoder(x_pos)
-            enc_neg = self.dynamic_encoder(x_neg)
+                # dynamic operation
+                enc = self.dynamic_encoder(x)
+                enc_pos = self.dynamic_encoder(x_pos)
             # decode
             dec = self.decoder(enc, emb_pos)
-            dec_syn = self.decoder(enc_pos.detach(), emb_neg.detach())
-            return enc, enc_pos, enc_neg, emb, emb_pos, emb_neg, dec, dec_syn
+            dec_syn = self.decoder(enc_pos, emb_neg)
+            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
         elif mode == 'raw_dis':
             # static operation
             emb_neg = self.static_operation(x_neg)
