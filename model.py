@@ -218,20 +218,55 @@ class AE(nn.Module):
         emb = F.avg_pool1d(enc, kernel_size=enc.size(2)).squeeze(2)
         return emb 
 
-    def forward(self, x, x_pos, x_neg):
-        # static operation
-        emb = self.static_operation(x)
-        emb_pos = self.static_operation(x_pos)
-
-        # dynamic operation
-        enc = self.dynamic_encoder(x)
-        enc_pos = self.dynamic_encoder(x_pos)
-        enc_neg = self.dynamic_encoder(x_neg)
-
-        # decode
-        dec = self.decoder(enc, emb_pos)
-
-        return enc, enc_pos, enc_neg, dec, emb, emb_pos
+    def forward(self, x, x_pos, x_neg, mode):
+        # for autoencoder pretraining
+        if mode == 'ae': 
+            # static operation
+            emb_pos = self.static_operation(x_pos)
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            # decode
+            dec = self.decoder(enc, emb_pos)
+            return enc, emb_pos, dec
+        elif mode == 'latent_ae':
+            # static operation
+            emb = self.static_operation(x)
+            emb_pos = self.static_operation(x_pos)
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            enc_pos = self.dynamic_encoder(x_pos)
+            enc_neg = self.dynamic_encoder(x_neg)
+            # decode
+            dec = self.decoder(enc, emb_pos)
+            return enc, enc_pos, enc_neg, emb, emb_pos, dec
+        elif mode == 'latent_dis':
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            enc_pos = self.dynamic_encoder(x_pos)
+            enc_neg = self.dynamic_encoder(x_neg)
+            return enc, enc_pos, enc_neg 
+        elif mode == 'raw_ae':
+            # static operation
+            emb = self.static_operation(x)
+            emb_pos = self.static_operation(x_pos)
+            # stop gradient
+            with torch.no_grad():
+                emb_neg = self.static_operation(x_neg)
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            enc_pos = self.dynamic_encoder(x_pos)
+            enc_neg = self.dynamic_encoder(x_neg)
+            # decode
+            dec = self.decoder(enc, emb_pos)
+            dec_syn = self.decoder(enc_pos.detach(), emb_neg.detach())
+            return enc, enc_pos, enc_neg, emb, emb_pos, emb_neg, dec, dec_syn
+        elif mode == 'raw_dis':
+            # static operation
+            emb_neg = self.static_operation(x_neg)
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            dec_syn = self.decoder(enc, emb_neg)
+            return enc, emb_neg, dec_syn
 
 class LatentDiscriminator(nn.Module):
     def __init__(self, input_size, c_in, c_h, kernel_size, 
@@ -248,16 +283,21 @@ class LatentDiscriminator(nn.Module):
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
                 for _ in range(n_conv_layers)])
+        self.context_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
+                for _ in range(n_conv_layers)])
+        self.norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_layers)])
+        self.context_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_layers)])
         self.dense_layers = nn.ModuleList([nn.Linear(c_h * 2, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, 1)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def conv_blocks(self, inp):
+    def conv_blocks(self, inp, conv_layers, norm_layers):
         out = pad_layer(inp, self.in_conv_layer)
         for l in range(self.n_conv_layers):
-            out = pad_layer(out, self.conv_layers[l])
+            out = pad_layer(out, conv_layers[l])
             out = self.act(out)
+            out = norm_layers[l](out)
             out = self.dropout_layer(out)
         out = F.avg_pool1d(out, kernel_size=out.size(2))
         out = out.squeeze(dim=2)
@@ -273,9 +313,9 @@ class LatentDiscriminator(nn.Module):
         return out
 
     def forward(self, x, x_pos, x_neg):
-        x_vec = self.conv_blocks(x)
-        x_pos_vec = self.conv_blocks(x_pos)
-        x_neg_vec = self.conv_blocks(x_neg)
+        x_vec = self.conv_blocks(x, self.conv_layers, self.norm_layers)
+        x_pos_vec = self.conv_blocks(x_pos, self.context_conv_layers, self.context_norm_layers)
+        x_neg_vec = self.conv_blocks(x_neg, self.context_conv_layers, self.context_norm_layers)
 
         fused_pos = torch.cat([x_vec, x_pos_vec], dim=1)
         fused_neg = torch.cat([x_vec, x_neg_vec], dim=1)

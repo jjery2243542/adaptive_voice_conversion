@@ -5,13 +5,13 @@ bank_size: 200
 bank_scale: 50
 s_enc_n_conv_blocks: 5 
 s_enc_n_dense_blocks: 2
-d_enc_n_conv_blocks: 8
+d_enc_n_conv_blocks: 7
 d_enc_n_dense_blocks: 4
 s_subsample: [2, 2, 2, 2, 2]
-d_subsample: [2, 2, 2, 1, 2, 1, 1, 1]
+d_subsample: [2, 2, 2, 2, 1, 1, 1]
 dec_n_conv_blocks: 6
 dec_n_dense_blocks: 2
-upsample: [2, 2, 2, 2, 1, 1] 
+upsample: [1, 2, 2, 2, 2, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
 dis_c_h: 512

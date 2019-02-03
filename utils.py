@@ -5,7 +5,6 @@ import editdistance
 import torch.nn as nn
 import torch.nn.init as init
 
-
 class NoiseAdder(object):
     def __init__(self, mean, std):
         self.mean = mean
