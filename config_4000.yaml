@@ -1,5 +1,7 @@
 c_in: 1
-c_h: 128 
+c_h: 128
+c_latent: 128
+c_cond: 64
 kernel_size: 60
 bank_size: 200
 bank_scale: 50
@@ -30,8 +32,8 @@ beta2: 0.99
 amsgrad: False
 lambda_sim: 0.01
 lambda_dis: 0.0001
-add_gaussian: False
-gaussian_std: 0.01
+add_gaussian: True
+gaussian_std: 0.05
 grad_norm: 2
 ae_steps: 1
 dis_steps: 1

@@ -75,7 +75,7 @@ class Encoder(nn.Module):
                 [nn.Conv1d(c_in, c_h, kernel_size=k) for k in \
                 range(bank_scale, bank_size + 1, bank_scale)])
         in_channels = c_h * (bank_size // bank_scale) + c_in
-        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=kernel_size)
+        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -122,7 +122,7 @@ class Encoder(nn.Module):
 
 # Conv_blocks followed by dense blocks
 class Decoder(nn.Module):
-    def __init__(self, c_in, c_h, c_out, kernel_size, 
+    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, 
             n_conv_blocks, upsample, n_dense_blocks, act, dropout_rate):
         super(Decoder, self).__init__()
         self.c_in = c_in
@@ -133,7 +133,8 @@ class Decoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
+        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
+        self.cond_linear_layer = nn.Linear(c_cond, c_h)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(\
@@ -151,6 +152,7 @@ class Decoder(nn.Module):
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
+        cond = self.cond_linear_layer(cond)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = append_cond(out, cond)
@@ -185,28 +187,31 @@ class Decoder(nn.Module):
         return out
 
 class AE(nn.Module):
-    def __init__(self, c_in, c_h, c_out, kernel_size,
+    def __init__(self, c_in, c_h,
+            c_latent, c_cond,
+            c_out, kernel_size,
             bank_size, bank_scale,
             s_enc_n_conv_blocks, s_enc_n_dense_blocks, 
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
-            s_subsample, d_subsample,  
+            s_subsample, d_subsample, 
             dec_n_conv_blocks, dec_n_dense_blocks, upsample, act, dropout_rate):
         super(AE, self).__init__()
-        self.static_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_h, 
+        self.static_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_cond, 
                 kernel_size=kernel_size, 
                 bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=s_enc_n_conv_blocks, 
                 subsample=s_subsample, 
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
-        self.dynamic_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_h, 
+        self.dynamic_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_latent, 
                 kernel_size=kernel_size, 
                 bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=d_enc_n_conv_blocks, 
                 subsample=d_subsample, 
                 n_dense_blocks=d_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
-        self.decoder = Decoder(c_in=c_h, c_h=c_h, c_out=c_out, 
+        self.decoder = Decoder(c_in=c_latent, c_cond=c_cond, 
+                c_h=c_h, c_out=c_out, 
                 kernel_size=kernel_size, 
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
