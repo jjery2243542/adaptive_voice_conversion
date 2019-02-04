@@ -280,21 +280,16 @@ class LatentDiscriminator(nn.Module):
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
                 for _ in range(n_conv_layers)])
-        self.context_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
-                for _ in range(n_conv_layers)])
-        self.norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_layers)])
-        self.context_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_layers)])
         self.dense_layers = nn.ModuleList([nn.Linear(c_h * 2, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, 1)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def conv_blocks(self, inp, conv_layers, norm_layers):
+    def conv_blocks(self, inp):
         out = pad_layer(inp, self.in_conv_layer)
         for l in range(self.n_conv_layers):
-            out = pad_layer(out, conv_layers[l])
+            out = pad_layer(out, self.conv_layers[l])
             out = self.act(out)
-            out = norm_layers[l](out)
             out = self.dropout_layer(out)
         out = F.avg_pool1d(out, kernel_size=out.size(2))
         out = out.squeeze(dim=2)
@@ -310,9 +305,9 @@ class LatentDiscriminator(nn.Module):
         return out
 
     def forward(self, x, x_pos, x_neg):
-        x_vec = self.conv_blocks(x, self.conv_layers, self.norm_layers)
-        x_pos_vec = self.conv_blocks(x_pos, self.context_conv_layers, self.context_norm_layers)
-        x_neg_vec = self.conv_blocks(x_neg, self.context_conv_layers, self.context_norm_layers)
+        x_vec = self.conv_blocks(x)
+        x_pos_vec = self.conv_blocks(x_pos)
+        x_neg_vec = self.conv_blocks(x_neg)
 
         fused_pos = torch.cat([x_vec, x_pos_vec], dim=1)
         fused_neg = torch.cat([x_vec, x_neg_vec], dim=1)

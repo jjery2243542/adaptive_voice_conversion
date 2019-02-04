@@ -119,9 +119,11 @@ class Solver(object):
                 dropout_rate=self.config.dis_dropout_rate))
         print(self.discr)
         self.gen_opt = torch.optim.Adam(self.model.parameters(), 
-                lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2))  
+                lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
+                amsgrad=self.config.amsgrad)  
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
-                lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2)) 
+                lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
+                amsgrad=self.config.amsgrad)  
         print(self.gen_opt)
         print(self.dis_opt)
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
@@ -234,7 +236,16 @@ class Solver(object):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
 
         with torch.no_grad():
-            enc, enc_pos, enc_neg = self.model(x, x_pos, x_neg, mode='latent_dis')
+            if self.config.add_gaussian:
+                enc, enc_pos, enc_neg = self.model(self.noise_adder(x), 
+                        self.noise_adder(x_pos), 
+                        self.noise_adder(x_neg), 
+                        mode='latent_dis')
+            else:
+                enc, enc_pos, enc_neg = self.model(x, 
+                        x_pos, 
+                        x_neg, 
+                        mode='latent_dis')
 
         # input for the discriminator
         pos_val, neg_val = self.discr(enc, enc_pos, enc_neg)

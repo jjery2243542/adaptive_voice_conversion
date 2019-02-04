@@ -8,14 +8,14 @@ s_enc_n_dense_blocks: 2
 d_enc_n_conv_blocks: 7
 d_enc_n_dense_blocks: 4
 s_subsample: [2, 2, 2, 2, 2]
-d_subsample: [2, 2, 2, 2, 1, 1, 1]
+d_subsample: [2, 2, 2, 2, 1, 1, 1, 1]
 dec_n_conv_blocks: 6
 dec_n_dense_blocks: 2
 upsample: [1, 2, 2, 2, 2, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
 dis_c_h: 512
-dis_kernel_size: 10
+dis_kernel_size: 20
 dis_n_conv_layers: 4
 dis_d_h: 512
 dis_n_dense_layers: 2
@@ -27,11 +27,12 @@ gen_lr: 0.0002
 dis_lr: 0.0001
 beta1: 0.5
 beta2: 0.99
+amsgrad: False
 lambda_sim: 0.01
 lambda_dis: 0.0001
 add_gaussian: False
 gaussian_std: 0.01
-grad_norm: 5
+grad_norm: 2
 ae_steps: 1
 dis_steps: 1
 sched_iters: 10000
