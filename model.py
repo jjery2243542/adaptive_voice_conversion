@@ -251,8 +251,8 @@ class AE(nn.Module):
             enc_neg = self.dynamic_encoder(x_neg)
             return enc, enc_pos, enc_neg 
         elif mode == 'raw_ae':
-            # static operation
             with torch.no_grad():
+                # static operation
                 emb_pos = self.static_operation(x_pos)
                 emb_neg = self.static_operation(x_neg)
                 # dynamic operation
