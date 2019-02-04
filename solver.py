@@ -111,7 +111,7 @@ class Solver(object):
 
         discr_input_size = self.config.segment_size / reduce(lambda x, y: x*y, self.config.d_subsample)
         self.discr = cc(LatentDiscriminator(input_size=discr_input_size,
-                c_in=self.config.c_h, 
+                c_in=self.config.c_latent, 
                 c_h=self.config.dis_c_h, 
                 kernel_size=self.config.dis_kernel_size,
                 n_conv_layers=self.config.dis_n_conv_layers,

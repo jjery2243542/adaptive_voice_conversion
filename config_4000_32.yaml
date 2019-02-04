@@ -31,10 +31,10 @@ beta1: 0.5
 beta2: 0.99
 amsgrad: False
 lambda_sim: 0.01
-lambda_dis: 0.0001
+lambda_dis: 0.01
 add_gaussian: False
 gaussian_std: 0.05
 grad_norm: 2
 ae_steps: 1
-dis_steps: 1
-sched_iters: 10000
+dis_steps: 3
+sched_iters: 80000
