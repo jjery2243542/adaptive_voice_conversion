@@ -36,5 +36,5 @@ add_gaussian: False
 gaussian_std: 0.05
 grad_norm: 2
 ae_steps: 1
-dis_steps: 3
+dis_steps: 1
 sched_iters: 80000

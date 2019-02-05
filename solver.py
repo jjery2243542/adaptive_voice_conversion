@@ -208,13 +208,12 @@ class Solver(object):
 
         pos_val, neg_val = self.discr(enc, enc_pos, enc_neg)
 
-        ones_label = neg_val.new_ones(*neg_val.size())
-        zeros_label = pos_val.new_zeros(*pos_val.size())
+        halfs_label = neg_val.new_ones(*neg_val.size()) * 0.5
 
         criterion = nn.BCEWithLogitsLoss()
 
-        loss_pos = criterion(pos_val, zeros_label)
-        loss_neg = criterion(neg_val, ones_label)
+        loss_pos = criterion(pos_val, halfs_label)
+        loss_neg = criterion(neg_val, halfs_label)
 
         loss_dis = (loss_pos + loss_neg) / 2
 
