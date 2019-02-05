@@ -63,9 +63,17 @@ if __name__ == '__main__':
         train_path_list += path_list[:-test_data_size]
         in_test_path_list += path_list[-test_data_size:]
 
+    with open(os.path.join(output_dir, 'in_test_files.txt')) as f:
+        for path in in_test_path_list:
+            f.write(f'{path}\n')
+
     for speaker in test_speaker_ids:
         path_list = speaker2filenames[speaker]
         out_test_path_list += path_list
+
+    with open(os.path.join(output_dir, 'out_test_files.txt')) as f:
+        for path in out_test_path_list:
+            f.write(f'{path}\n')
 
     for dset, path_list in zip(['train', 'in_test', 'out_test'], \
             [train_path_list, in_test_path_list, out_test_path_list]):
