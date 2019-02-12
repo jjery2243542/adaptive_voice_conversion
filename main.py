@@ -23,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('-tag', '-t', default='init')
     parser.add_argument('-ae_iters', default=0, type=int)
     parser.add_argument('-dis_iters', default=0, type=int)
+    parser.add_argument('-emb_dis_iters', default=0, type=int)
     parser.add_argument('-iters', default=0, type=int)
 
     args = parser.parse_args()
@@ -39,6 +40,9 @@ if __name__ == '__main__':
 
     if args.dis_iters > 0:
         solver.dis_latent_pretrain(n_iterations=args.dis_iters)
+
+    if args.emb_dis_iters > 0:
+        solver.emb_dis_pretrain(n_iterations=args.emb_dis_iters)
 
     if args.iters > 0:
         solver.train(n_iterations=args.iters)
