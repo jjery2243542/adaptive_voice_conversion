@@ -34,7 +34,9 @@ def append_cond(x, cond):
     # x = [batch_size, x_channels, length]
     # cond = [batch_size, x_channels]
     cond = cond.unsqueeze(dim=2)
-    out = x + cond
+    cond = cond.expand(*cond.size()[:-1], x.size(-1))
+    out = torch.cat([x, cond], dim=1)
+    #out = x + cond
     return out
 
 def conv_bank(x, module_list, act):
@@ -134,11 +136,10 @@ class Decoder(nn.Module):
         self.upsample = upsample
         self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
-        self.cond_linear_layer = nn.Linear(c_cond, c_h)
-        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
+        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(\
-                [nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size) \
+                [nn.Conv1d(c_h + c_cond, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.conv_norm_layers = nn.ModuleList(\
                 [nn.InstanceNorm1d(c_h * up) for _, up in zip(range(n_conv_blocks), self.upsample)])
