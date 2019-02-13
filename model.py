@@ -141,7 +141,7 @@ class Decoder(nn.Module):
                 [nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.conv_norm_layers = nn.ModuleList(\
-                [nn.InstanceNorm1d(c_h * up) for _, up in zip(range(n_conv_blocks), self.upsample)])
+                [nn.InstanceNorm1d(c_h) for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
@@ -163,7 +163,9 @@ class Decoder(nn.Module):
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             if self.upsample[l] > 1:
+                print(y.size())
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
+                print(y.size())
                 y = self.conv_norm_layers[l](y)
                 y = self.dropout_layer(y)
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
