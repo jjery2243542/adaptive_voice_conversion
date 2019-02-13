@@ -239,19 +239,26 @@ class AE(nn.Module):
             # static operation
             emb = self.static_operation(x)
             emb_pos = self.static_operation(x_pos)
+            emb_neg = self.static_operation(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
             enc_neg = self.dynamic_encoder(x_neg)
             # decode
             dec = self.decoder(enc, emb_pos)
-            return enc, enc_pos, enc_neg, emb, emb_pos, dec
+            return enc, enc_pos, enc_neg, emb, emb_pos, emb_neg, dec
         elif mode == 'latent_dis':
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
             enc_neg = self.dynamic_encoder(x_neg)
-            return enc, enc_pos, enc_neg 
+            return enc, enc_pos, enc_neg
+        elif mode == 'latent_emb_dis':
+            # static operation
+            emb = self.static_operation(x)
+            emb_pos = self.static_operation(x_pos)
+            emb_neg = self.static_operation(x_neg)
+            return emb, emb_pos, emb_neg
         elif mode == 'raw_ae':
             with torch.no_grad():
                 # static operation
@@ -271,6 +278,36 @@ class AE(nn.Module):
             enc = self.dynamic_encoder(x)
             dec_syn = self.decoder(enc, emb_neg)
             return enc, emb_neg, dec_syn
+
+    def get_static_embeddings(self, x):
+        return self.static_operation(x)
+
+class EmbeddingDiscriminator(nn.Module):
+    def __init__(self, input_size, n_dense_layers, d_h, act, dropout_rate):
+        super(EmbeddingDiscriminator, self).__init__()
+        self.input_size = input_size 
+        self.d_h = d_h
+        self.n_dense_layers = n_dense_layers
+        self.act = get_act(act)
+        self.dense_layers = nn.ModuleList([nn.Linear(input_size * 2, d_h)] + 
+                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
+                [nn.Linear(d_h, 1)])
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
+
+    def dense_blocks(self, x, y):
+        inp = torch.cat([x, y], dim=1)
+        out = inp
+        for l in range(self.n_dense_layers - 1):
+            out = self.dense_layers[l](out)
+            out = self.act(out)
+            out = self.dropout_layer(out)
+        out = self.dense_layers[-1](out)
+        return out
+
+    def forward(self, x, x_pos, x_neg):
+        pos_val = self.dense_blocks(x, x_pos)
+        neg_val = self.dense_blocks(x, x_neg)
+        return pos_val, neg_val
 
 class LatentDiscriminator(nn.Module):
     def __init__(self, input_size, c_in, c_h, kernel_size, 

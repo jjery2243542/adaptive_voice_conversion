@@ -22,11 +22,15 @@ dis_n_conv_layers: 4
 dis_d_h: 512
 dis_n_dense_layers: 2
 dis_dropout_rate: 0.3
+emb_dis_d_h: 1024
+emb_dis_n_dense_layers: 2
+emb_dis_dropout_rate: 0.3
 segment_size: 4000
 batch_size: 12
 shuffle: True
 gen_lr: 0.0002
 dis_lr: 0.0001
+emb_dis_lr: 0.0001
 beta1: 0.5
 beta2: 0.99
 amsgrad: False
@@ -37,4 +41,5 @@ gaussian_std: 0.05
 grad_norm: 2
 ae_steps: 1
 dis_steps: 1
+emb_dis_steps: 1
 sched_iters: 80000
