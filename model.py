@@ -142,10 +142,10 @@ class Decoder(nn.Module):
                 [nn.Conv1d(c_h + c_cond, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.conv_norm_layers = nn.ModuleList(\
-                [nn.InstanceNorm1d(c_h * up) for _, up in zip(range(n_conv_blocks), self.upsample)])
-        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
+                [nn.InstanceNorm1d(c_h) for _, up in zip(range(n_conv_blocks), self.upsample)])
+        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
+        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
@@ -153,7 +153,6 @@ class Decoder(nn.Module):
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
-        cond = self.cond_linear_layer(cond)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = append_cond(out, cond)
