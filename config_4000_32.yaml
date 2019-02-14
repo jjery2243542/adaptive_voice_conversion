@@ -25,8 +25,8 @@ dis_dropout_rate: 0.3
 segment_size: 4000
 batch_size: 12
 shuffle: True
-gen_lr: 0.0002
-dis_lr: 0.0001
+gen_lr: 0.0001
+dis_lr: 0.0002
 beta1: 0.5
 beta2: 0.99
 amsgrad: False

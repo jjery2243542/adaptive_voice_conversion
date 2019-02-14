@@ -270,6 +270,9 @@ class AE(nn.Module):
             dec_syn = self.decoder(enc, emb_neg)
             return enc, emb_neg, dec_syn
 
+    def get_static_embeddings(self, x):
+        return self.static_operation(x)
+
 class LatentDiscriminator(nn.Module):
     def __init__(self, input_size, c_in, c_h, kernel_size, 
             n_conv_layers, n_dense_layers, d_h, act, dropout_rate):
