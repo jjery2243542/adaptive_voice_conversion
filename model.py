@@ -270,6 +270,12 @@ class AE(nn.Module):
             dec_syn = self.decoder(enc, emb_neg)
             return enc, emb_neg, dec_syn
 
+    def inference(self, x, x_cond):
+        emb = self.static_operation(x_cond)
+        enc = self.dynamic_encoder(x)
+        dec = self.decoder(enc, emb)
+        return dec
+
     def get_static_embeddings(self, x):
         return self.static_operation(x)
 
