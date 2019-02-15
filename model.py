@@ -240,16 +240,19 @@ class AE(nn.Module):
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
-            enc_neg = self.dynamic_encoder(x_neg)
             # decode
             dec = self.decoder(enc, emb_pos)
-            return enc, enc_pos, enc_neg, emb, emb_pos, dec
-        elif mode == 'latent_dis':
+            return enc, enc_pos, emb, emb_pos, dec
+        elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
+            return enc, enc_pos 
+        elif mode == 'latent_dis_neg':
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
             enc_neg = self.dynamic_encoder(x_neg)
-            return enc, enc_pos, enc_neg 
+            return enc, enc_neg 
         elif mode == 'raw_ae':
             with torch.no_grad():
                 # static operation
@@ -318,17 +321,12 @@ class LatentDiscriminator(nn.Module):
         out = self.dense_layers[-1](out)
         return out
 
-    def forward(self, x, x_pos, x_neg):
+    def forward(self, x, x_context):
         x_vec = self.conv_blocks(x)
-        x_pos_vec = self.conv_blocks(x_pos)
-        x_neg_vec = self.conv_blocks(x_neg)
-
-        fused_pos = torch.cat([x_vec, x_pos_vec], dim=1)
-        fused_neg = torch.cat([x_vec, x_neg_vec], dim=1)
-
-        pos_val = self.dense_blocks(fused_pos)
-        neg_val = self.dense_blocks(fused_neg)
-        return pos_val, neg_val
+        x_context_vec = self.conv_blocks(x_context)
+        fused = torch.cat([x_vec, x_context_vec], dim=1)
+        val = self.dense_blocks(fused)
+        return val
 
 if __name__ == '__main__':
     ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 

@@ -16,8 +16,8 @@ dec_n_dense_blocks: 2
 upsample: [2, 2, 2, 2, 2, 1, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
-dis_c_h: 512
-dis_kernel_size: 20
+dis_c_h: 256
+dis_kernel_size: 5
 dis_n_conv_layers: 4
 dis_d_h: 512
 dis_n_dense_layers: 2
@@ -36,5 +36,5 @@ add_gaussian: False
 gaussian_std: 0.05
 grad_norm: 2
 ae_steps: 1
-dis_steps: 1
+dis_steps: 5
 sched_iters: 80000

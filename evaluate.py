@@ -23,6 +23,7 @@ import matplotlib as mpl
 mpl.use('Agg')
 from matplotlib import pyplot as plt
 from scipy.io.wavfile import write
+import random
 
 class Evaluater(object):
     def __init__(self, config, args):
@@ -123,13 +124,15 @@ class Evaluater(object):
         # filter the samples by speakers sampled
         # hack code 
         small_indexes = [index for index in self.indexes if index[0][:len('p000')] in self.sampled_speakers]
+        random.shuffle(small_indexes)
+        small_indexes = small_indexes[:self.args.max_samples]
         # generate the tensor and dataloader for evaluation
         tensor = [self.pkl_data[key][t:t + self.config.segment_size] for key, t, _, _, _ in small_indexes]
         speakers = [key[:len('p000')] for key, _, _, _, _  in small_indexes]
         # add the dimension for channel
         tensor = torch.from_numpy(np.array(tensor)).unsqueeze(dim=1)
         dataset = TensorDataset(tensor)
-        dataloader = DataLoader(dataset, batch_size=10, shuffle=False, num_workers=0)
+        dataloader = DataLoader(dataset, batch_size=50, shuffle=False, num_workers=0)
         all_embs = []
         # run the model 
         for data in dataloader:
@@ -139,7 +142,7 @@ class Evaluater(object):
         all_embs = np.array(all_embs)
         print(all_embs.shape)
         # TSNE
-        embs_2d = TSNE(n_components=2, init='pca').fit_transform(all_embs)
+        embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
         x_min, x_max = embs_2d.min(0), embs_2d.max(0)
         embs_norm = (embs_2d - x_min) / (x_max - x_min)
         # plot to figure
@@ -167,10 +170,10 @@ class Evaluater(object):
         content_utt, _, _, cond_utt, _ = self.indexes[0]
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
-        self.inference_one_utterance(content, cond, f'{args.output_path}.in.wav')
+        self.inference_one_utterance(content, cond, f'{args.output_path}.src2tar.wav')
         # reconstruction
-        self.inference_one_utterance(content, content, f'{args.output_path}.rec.wav')
-        self.inference_one_utterance(cond, cond, f'{args.output_path}.rec.wav')
+        self.inference_one_utterance(content, content, f'{args.output_path}.rec_src.wav')
+        self.inference_one_utterance(cond, cond, f'{args.output_path}.rec_tar.wav')
         return
 
 
@@ -185,8 +188,9 @@ if __name__ == '__main__':
     parser.add_argument('-load_model_path', default='/storage/model/adaptive_vc/model')
     parser.add_argument('--plot_speakers', action='store_true')
     parser.add_argument('-fig_output_path', default='speaker.png')
-    parser.add_argument('-n_speakers', default=20, type=int)
+    parser.add_argument('-n_speakers', default=8, type=int)
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
+    parser.add_argument('-max_samples', default=3000, type=int)
     parser.add_argument('--infer_default', action='store_true')
     parser.add_argument('-output_path', default='test')
 
