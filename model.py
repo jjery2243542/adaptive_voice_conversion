@@ -283,10 +283,11 @@ class AE(nn.Module):
         return self.static_operation(x)
 
 class LatentDiscriminator(nn.Module):
-    def __init__(self, input_size, c_in, c_h, kernel_size, 
+    def __init__(self, input_size, output_size, c_in, c_h, kernel_size, 
             n_conv_layers, n_dense_layers, d_h, act, dropout_rate):
         super(LatentDiscriminator, self).__init__()
         self.input_size = input_size
+        self.output_size = output_size
         self.c_in = c_in
         self.c_h = c_h
         self.kernel_size = kernel_size
@@ -303,7 +304,7 @@ class LatentDiscriminator(nn.Module):
         dense_input_size *= c_h
         self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
-                [nn.Linear(d_h, 1)])
+                [nn.Linear(d_h, output_size)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def conv_blocks(self, inp):
