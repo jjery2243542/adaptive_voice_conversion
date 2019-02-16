@@ -28,7 +28,7 @@ shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002
 beta1: 0.5
-beta2: 0.999
+beta2: 0.999 #0.99
 amsgrad: False
 lambda_sim: 0.01
 lambda_dis: 0.01
