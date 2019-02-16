@@ -1,5 +1,5 @@
 c_in: 1
-c_h: 64
+c_h: 128
 c_latent: 32
 c_cond: 128
 kernel_size: 60
