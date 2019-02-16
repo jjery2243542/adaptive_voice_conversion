@@ -132,7 +132,7 @@ class Evaluater(object):
         # add the dimension for channel
         tensor = torch.from_numpy(np.array(tensor)).unsqueeze(dim=1)
         dataset = TensorDataset(tensor)
-        dataloader = DataLoader(dataset, batch_size=50, shuffle=False, num_workers=0)
+        dataloader = DataLoader(dataset, batch_size=20, shuffle=False, num_workers=0)
         all_embs = []
         # run the model 
         for data in dataloader:
@@ -190,7 +190,7 @@ if __name__ == '__main__':
     parser.add_argument('-fig_output_path', default='speaker.png')
     parser.add_argument('-n_speakers', default=8, type=int)
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
-    parser.add_argument('-max_samples', default=3000, type=int)
+    parser.add_argument('-max_samples', default=1000, type=int)
     parser.add_argument('--infer_default', action='store_true')
     parser.add_argument('-output_path', default='test')
 
