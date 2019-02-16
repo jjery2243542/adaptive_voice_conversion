@@ -297,7 +297,7 @@ class Solver(object):
             # add to logger
             self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
             loss_rec = meta['loss_rec']
-            print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}', end='\r')
+            print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='ae')
@@ -315,7 +315,7 @@ class Solver(object):
             acc = meta['acc']
 
             print(f'D:[{iteration + 1}/{n_iterations}], loss_pos={loss_pos:.2f}, loss_neg={loss_neg:.2f}, '
-                    f'acc={acc:.2f}', end='\r')
+                    f'acc={acc:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='dis')
@@ -349,7 +349,7 @@ class Solver(object):
             acc = dis_meta['acc']
 
             print(f'[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_sim={loss_sim:.2f}, '
-                    f'loss_dis={loss_dis:.2f}, acc={acc:.2f}, lambda_dis={lambda_dis:.1e}', 
+                    f'loss_dis={loss_dis:.2f}, acc={acc:.2f}, lambda_dis={lambda_dis:.1e}     ', 
                     end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
