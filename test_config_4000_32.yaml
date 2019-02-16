@@ -1,15 +1,15 @@
 c_in: 1
 c_h: 64
-c_latent: 32
+c_latent: 16
 c_cond: 128
-kernel_size: 60
-bank_size: 320
-bank_scale: 40
+kernel_size: 20
+bank_size: 200
+bank_scale: 20
 s_enc_n_conv_blocks: 6 
 s_enc_n_dense_blocks: 2
 d_enc_n_conv_blocks: 8
 d_enc_n_dense_blocks: 4
-s_subsample: [2, 2, 2, 2, 2, 1]
+s_subsample: [2, 2, 2, 2, 2, 2]
 d_subsample: [2, 2, 2, 2, 2, 1, 1, 1]
 dec_n_conv_blocks: 7
 dec_n_dense_blocks: 2

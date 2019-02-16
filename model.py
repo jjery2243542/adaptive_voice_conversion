@@ -106,7 +106,7 @@ class Encoder(nn.Module):
             y = self.conv_norm_layers[l](y)
             y = self.dropout_layer(y)
             if self.subsample[l] > 1:
-                out = F.avg_pool1d(out, kernel_size=self.subsample[l])
+                out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
             out = y + out
 
         for l in range(self.n_dense_blocks):
