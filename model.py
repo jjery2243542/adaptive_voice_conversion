@@ -297,7 +297,11 @@ class LatentDiscriminator(nn.Module):
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
                 for _ in range(n_conv_layers)])
-        self.dense_layers = nn.ModuleList([nn.Linear(c_h * 2, d_h)] + 
+        dense_input_size = input_size 
+        for l in range(n_conv_layers):
+            dense_input_size = ceil(dense_input_size * 0.5)
+        dense_input_size *= c_h
+        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, 1)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
@@ -308,8 +312,7 @@ class LatentDiscriminator(nn.Module):
             out = pad_layer(out, self.conv_layers[l])
             out = self.act(out)
             out = self.dropout_layer(out)
-        out = F.avg_pool1d(out, kernel_size=out.size(2))
-        out = out.squeeze(dim=2)
+        out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
         return out
 
     def dense_blocks(self, inp):

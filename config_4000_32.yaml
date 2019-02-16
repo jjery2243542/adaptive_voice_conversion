@@ -19,7 +19,7 @@ dropout_rate: 0.5
 dis_c_h: 256
 dis_kernel_size: 5
 dis_n_conv_layers: 4
-dis_d_h: 512
+dis_d_h: 1024
 dis_n_dense_layers: 2
 dis_dropout_rate: 0.3
 segment_size: 4000
@@ -28,13 +28,13 @@ shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002
 beta1: 0.5
-beta2: 0.99
+beta2: 0.999
 amsgrad: False
-lambda_sim: 0
+lambda_sim: 0.01
 lambda_dis: 0.01
 add_gaussian: False
 gaussian_std: 0.05
 grad_norm: 2
 ae_steps: 1
 dis_steps: 5
-sched_iters: 80000
+sched_iters: 50000
