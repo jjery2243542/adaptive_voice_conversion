@@ -82,12 +82,12 @@ class Encoder(nn.Module):
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
             for sub, _ in zip(subsample, range(n_conv_blocks))])
-        self.conv_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_conv_blocks)])
+        self.conv_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_conv_blocks)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_dense_blocks)])
+        self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
@@ -142,12 +142,12 @@ class Decoder(nn.Module):
                 [nn.Conv1d(c_h + c_cond, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.conv_norm_layers = nn.ModuleList(\
-                [nn.InstanceNorm1d(c_h) for _, up in zip(range(n_conv_blocks), self.upsample)])
+                [nn.InstanceNorm1d(c_h, affine=True) for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h) for _ in range(n_dense_blocks)])
+        self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
