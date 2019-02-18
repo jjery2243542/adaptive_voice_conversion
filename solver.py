@@ -46,9 +46,9 @@ class Solver(object):
 
     def save_config(self):
         with open(f'{self.args.store_model_path}.config.yaml', 'w') as f:
-            yaml.dump(vars(self.config))
+            yaml.dump(vars(self.config), f)
         with open(f'{self.args.store_model_path}.args.yaml', 'w') as f:
-            yaml.dump(vars(self.args))
+            yaml.dump(vars(self.args), f)
         return
 
     def load_model(self, load_opt, load_dis):
