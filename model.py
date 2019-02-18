@@ -30,6 +30,7 @@ def upsample(x, scale_factor=2):
     x_up = F.interpolate(x, scale_factor=2, mode='nearest')
     return x_up
 
+'''DEPRECATED
 def append_cond(x, cond):
     # x = [batch_size, x_channels, length]
     # cond = [batch_size, x_channels]
@@ -37,6 +38,14 @@ def append_cond(x, cond):
     cond = cond.expand(*cond.size()[:-1], x.size(-1))
     out = torch.cat([x, cond], dim=1)
     #out = x + cond
+    return out
+'''
+def append_cond(x, cond):
+    # x = [batch_size, x_channels, length]
+    # cond = [batch_size, x_channels * 2]
+    p = cond.size(1) // 2
+    mean, std = cond[:, :p], cond[:, p:]
+    out = x * std.unsqueeze(dim=2) + mean.unsqueeze(dim=2)
     return out
 
 def conv_bank(x, module_list, act):
@@ -57,11 +66,62 @@ def get_act(act):
     else:
         return nn.ReLU()
 
-# Conv_blocks followed by dense blocks
-class Encoder(nn.Module):
+class StaticEncoder(nn.Module):
+    def __init__(self, c_in, c_h, c_out, kernel_size, 
+            n_conv_blocks, subsample, n_dense_blocks, act, dropout_rate):
+        super(StaticEncoder, self).__init__()
+        self.c_in = c_in
+        self.c_h = c_h
+        self.c_out = c_out
+        self.kernel_size = kernel_size
+        self.n_conv_blocks = n_conv_blocks
+        self.n_dense_blocks = n_dense_blocks
+        self.subsample = subsample
+        self.act = get_act(act)
+        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
+        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
+                in range(n_conv_blocks)])
+        self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
+            for sub, _ in zip(subsample, range(n_conv_blocks))])
+        # dense layers are after pooling
+        self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
+        self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
+        self.output_layer = nn.Linear(c_h, c_out * 2)
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
+
+    def forward(self, x):
+        # dimension reduction layer
+        out = pad_layer(x, self.in_conv_layer)
+
+        # convolution blocks
+        for l in range(self.n_conv_blocks):
+            y = pad_layer(out, self.first_conv_layers[l])
+            y = self.act(y)
+            y = self.dropout_layer(y)
+            y = pad_layer(y, self.second_conv_layers[l])
+            y = self.act(y)
+            y = self.dropout_layer(y)
+            if self.subsample[l] > 1:
+                out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
+            out = y + out
+
+        # avg_pooling 
+        out = F.avg_pool1d(out, kernel_size=out.size(2)).squeeze(dim=2)
+        for l in range(self.n_dense_blocks):
+            y = self.first_dense_layers[l](out)
+            y = self.act(y)
+            y = self.dropout_layer(y)
+            y = self.second_dense_layers[l](y)
+            y = self.act(y)
+            y = self.dropout_layer(y)
+            out = out + y
+        out = self.output_layer(out)
+        return out
+
+class DynamicEncoder(nn.Module):
     def __init__(self, c_in, c_h, c_out, kernel_size, bank_size, bank_scale, 
             n_conv_blocks, subsample, n_dense_blocks, act, dropout_rate):
-        super(Encoder, self).__init__()
+        super(DynamicEncoder, self).__init__()
 
         self.c_in = c_in
         self.c_h = c_h
@@ -82,12 +142,14 @@ class Encoder(nn.Module):
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
             for sub, _ in zip(subsample, range(n_conv_blocks))])
-        self.conv_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_conv_blocks)])
+        self.conv_norm_layers = nn.ModuleList(
+                [nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_conv_blocks)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
+        self.dense_norm_layers = nn.ModuleList(
+                [nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
@@ -129,6 +191,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.c_in = c_in
         self.c_h = c_h
+        self.c_cond = c_cond
         self.c_out = c_out
         self.kernel_size = kernel_size
         self.n_conv_blocks = n_conv_blocks
@@ -136,18 +199,16 @@ class Decoder(nn.Module):
         self.upsample = upsample
         self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
-        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=kernel_size) for _ \
+        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(\
-                [nn.Conv1d(c_h + c_cond, c_h * up, kernel_size=kernel_size) \
+                [nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
-        #self.conv_norm_layers = nn.ModuleList(\
-        #        [nn.InstanceNorm1d(c_h, affine=True) for _, up in zip(range(n_conv_blocks), self.upsample)])
-        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
+        self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
+        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
+        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        #self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
@@ -155,32 +216,35 @@ class Decoder(nn.Module):
         out = pad_layer(x, self.in_conv_layer)
         # convolution blocks
         for l in range(self.n_conv_blocks):
-            y = append_cond(out, cond)
-            y = pad_layer(y, self.first_conv_layers[l])
+            y = pad_layer(out, self.first_conv_layers[l])
             y = self.act(y)
-            y = self.dropout_layer(y)
+            y = self.norm_layer(y)
             y = append_cond(y, cond)
+            y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             if self.upsample[l] > 1:
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
-                #y = self.conv_norm_layers[l](y)
+                y = self.norm_layer(y)
+                y = append_cond(y, cond)
                 y = self.dropout_layer(y)
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
-                #y = self.conv_norm_layers[l](y)
+                y = self.norm_layers[l](y)
+                y = append_cond(y, cond)
                 y = self.dropout_layer(y)
                 out = y + out
 
         for l in range(self.n_dense_blocks):
-            y = append_cond(out, cond)
             y = self.first_dense_layers[l](y)
             y = self.act(y)
-            y = self.dropout_layer(y)
+            y = self.norm_layer(y)
             y = append_cond(y, cond)
+            y = self.dropout_layer(y)
             y = self.second_dense_layers[l](y)
             y = self.act(y)
-            #y = self.dense_norm_layers[l](y)
+            y = self.norm_layer(y)
+            y = append_cond(y, cond)
             y = self.dropout_layer(y)
             out = out + y
         out = pad_layer(out, self.out_conv_layer)
@@ -196,21 +260,23 @@ class AE(nn.Module):
             s_subsample, d_subsample, 
             dec_n_conv_blocks, dec_n_dense_blocks, upsample, act, dropout_rate):
         super(AE, self).__init__()
-        self.static_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_cond, 
+
+        self.static_encoder = StaticEncoder(c_in=c_in, c_h=c_h, c_out=c_h, 
                 kernel_size=kernel_size, 
-                bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=s_enc_n_conv_blocks, 
                 subsample=s_subsample, 
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
-        self.dynamic_encoder = Encoder(c_in=c_in, c_h=c_h, c_out=c_latent, 
+
+        self.dynamic_encoder = DynamicEncoder(c_in=c_in, c_h=c_h, c_out=c_latent, 
                 kernel_size=kernel_size, 
                 bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=d_enc_n_conv_blocks, 
                 subsample=d_subsample, 
                 n_dense_blocks=d_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
-        self.decoder = Decoder(c_in=c_latent, c_cond=c_cond, 
+
+        self.decoder = Decoder(c_in=c_latent, c_cond=c_h, 
                 c_h=c_h, c_out=c_out, 
                 kernel_size=kernel_size, 
                 n_conv_blocks=dec_n_conv_blocks, 
@@ -218,16 +284,11 @@ class AE(nn.Module):
                 n_dense_blocks=dec_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
 
-    def static_operation(self, x):
-        enc = self.static_encoder(x)
-        emb = F.avg_pool1d(enc, kernel_size=enc.size(2)).squeeze(2)
-        return emb 
-
     def forward(self, x, x_pos, x_neg, mode):
         # for autoencoder pretraining
         if mode == 'ae': 
             # static operation
-            emb_pos = self.static_operation(x_pos)
+            emb_pos = self.static_encoder(x_pos)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             # decode
@@ -235,8 +296,8 @@ class AE(nn.Module):
             return enc, emb_pos, dec
         elif mode == 'latent_ae':
             # static operation
-            emb = self.static_operation(x)
-            emb_pos = self.static_operation(x_pos)
+            emb = self.static_encoder(x)
+            emb_pos = self.static_encoder(x_pos)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
@@ -256,8 +317,8 @@ class AE(nn.Module):
         elif mode == 'raw_ae':
             with torch.no_grad():
                 # static operation
-                emb_pos = self.static_operation(x_pos)
-                emb_neg = self.static_operation(x_neg)
+                emb_pos = self.static_encoder(x_pos)
+                emb_neg = self.static_encoder(x_neg)
                 # dynamic operation
                 enc = self.dynamic_encoder(x)
                 enc_pos = self.dynamic_encoder(x_pos)
@@ -267,20 +328,21 @@ class AE(nn.Module):
             return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
         elif mode == 'raw_dis':
             # static operation
-            emb_neg = self.static_operation(x_neg)
+            emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             dec_syn = self.decoder(enc, emb_neg)
             return enc, emb_neg, dec_syn
 
     def inference(self, x, x_cond):
-        emb = self.static_operation(x_cond)
+        emb = self.static_encoder(x_cond)
         enc = self.dynamic_encoder(x)
         dec = self.decoder(enc, emb)
         return dec
 
     def get_static_embeddings(self, x):
-        return self.static_operation(x)
+        mean, std = self.static_encoder(x)
+        return mean, std
 
 class LatentDiscriminator(nn.Module):
     def __init__(self, input_size, output_size, c_in, c_h, kernel_size, 

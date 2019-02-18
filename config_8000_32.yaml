@@ -1,12 +1,11 @@
 c_in: 1
-c_h: 64
+c_h: 128
 c_latent: 32
-c_cond: 64
-kernel_size: 15
+kernel_size: 11
 bank_size: 50
 bank_scale: 10
 s_enc_n_conv_blocks: 7 
-s_enc_n_dense_blocks: 2
+s_enc_n_dense_blocks: 4
 d_enc_n_conv_blocks: 7
 d_enc_n_dense_blocks: 2
 s_subsample: [2, 2, 2, 2, 2, 2, 2]
