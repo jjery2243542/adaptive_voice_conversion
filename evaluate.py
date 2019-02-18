@@ -162,18 +162,18 @@ class Evaluater(object):
         dec = self.model.inference(x, x_cond)
         dec = dec * self.std + self.mean
         dec = dec.detach().cpu().numpy()
-        write(output_path, rate=22050, data=dec)
-        return
+        write(output_path, rate=args.sample_rate, data=dec)
+        return dec
 
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, _, cond_utt, _ = self.indexes[0]
+        content_utt, _, _, cond_utt, _ = self.indexes[1]
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
-        self.inference_one_utterance(content, cond, f'{args.output_path}.src2tar.wav')
+        dec_src2tar = self.inference_one_utterance(content, cond, f'{args.output_path}.src2tar.wav')
         # reconstruction
-        self.inference_one_utterance(content, content, f'{args.output_path}.rec_src.wav')
-        self.inference_one_utterance(cond, cond, f'{args.output_path}.rec_tar.wav')
+        dec_src_rec = self.inference_one_utterance(content, content, f'{args.output_path}.rec_src.wav')
+        dec_tar_rec = self.inference_one_utterance(cond, cond, f'{args.output_path}.rec_tar.wav')
         return
 
 
@@ -181,9 +181,9 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('-config', '-c', default='config.yaml')
     parser.add_argument('-data_dir', '-d', 
-            default='/storage/feature/voice_conversion/trimmed_vctk_waveform/librosa/split_10_0.1')
+            default='/storage/feature/voice_conversion/trimmed_vctk_waveform/librosa/split_10_0.1/sr_16000/')
     parser.add_argument('-val_set', default='in_test')
-    parser.add_argument('-val_index_file', default='in_test_samples_4000.json')
+    parser.add_argument('-val_index_file', default='in_test_8192.json')
     parser.add_argument('-norm_param_file', default='mean_std.json')
     parser.add_argument('-load_model_path', default='/storage/model/adaptive_vc/model')
     parser.add_argument('--plot_speakers', action='store_true')
@@ -191,6 +191,7 @@ if __name__ == '__main__':
     parser.add_argument('-n_speakers', default=8, type=int)
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
     parser.add_argument('-max_samples', default=1000, type=int)
+    parser.add_argument('-sample_rate', default=16000, type=int)
     parser.add_argument('--infer_default', action='store_true')
     parser.add_argument('-output_path', default='test')
 
