@@ -1,11 +1,11 @@
 c_in: 1
-c_h: 128
+c_h: 64
 c_latent: 32
-c_cond: 128
-kernel_size: 20
+c_cond: 64
+kernel_size: 15
 bank_size: 50
 bank_scale: 10
-s_enc_n_conv_blocks: 6 
+s_enc_n_conv_blocks: 7 
 s_enc_n_dense_blocks: 2
 d_enc_n_conv_blocks: 7
 d_enc_n_dense_blocks: 2

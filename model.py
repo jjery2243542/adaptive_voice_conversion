@@ -141,13 +141,13 @@ class Decoder(nn.Module):
         self.second_conv_layers = nn.ModuleList(\
                 [nn.Conv1d(c_h + c_cond, c_h * up, kernel_size=kernel_size) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
-        self.conv_norm_layers = nn.ModuleList(\
-                [nn.InstanceNorm1d(c_h, affine=True) for _, up in zip(range(n_conv_blocks), self.upsample)])
+        #self.conv_norm_layers = nn.ModuleList(\
+        #        [nn.InstanceNorm1d(c_h, affine=True) for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h + c_cond, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
-        self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
+        #self.dense_norm_layers = nn.ModuleList([nn.InstanceNorm1d(c_h, affine=True) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
@@ -164,11 +164,11 @@ class Decoder(nn.Module):
             y = self.act(y)
             if self.upsample[l] > 1:
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
-                y = self.conv_norm_layers[l](y)
+                #y = self.conv_norm_layers[l](y)
                 y = self.dropout_layer(y)
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
-                y = self.conv_norm_layers[l](y)
+                #y = self.conv_norm_layers[l](y)
                 y = self.dropout_layer(y)
                 out = y + out
 
@@ -180,7 +180,7 @@ class Decoder(nn.Module):
             y = append_cond(y, cond)
             y = self.second_dense_layers[l](y)
             y = self.act(y)
-            y = self.dense_norm_layers[l](y)
+            #y = self.dense_norm_layers[l](y)
             y = self.dropout_layer(y)
             out = out + y
         out = pad_layer(out, self.out_conv_layer)

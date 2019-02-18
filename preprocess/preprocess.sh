@@ -1,10 +1,10 @@
 stage=1
-segment_size=8000
-data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_waveform/librosa/split_10_0.1
+segment_size=8192
+data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_waveform/librosa/split_10_0.1/sr_22050
 raw_data_dir=/groups/jjery2243542/data/raw/VCTK-Corpus
 n_out_speakers=10
 test_prop=0.1
-sample_rate=22050
+sample_rate=16000
 training_samples=10000000
 testing_samples=10000
 
