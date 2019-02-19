@@ -86,7 +86,7 @@ class StaticEncoder(nn.Module):
         # dense layers are after pooling
         self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
-        self.output_layer = nn.Linear(c_h, c_out * 2)
+        self.output_layer = nn.Linear(c_h, c_out)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
@@ -206,13 +206,13 @@ class Decoder(nn.Module):
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
-                [nn.Linear(c_h * 2, c_h * 2) for _ in range(n_conv_blocks * 2)])
+                [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks * 2)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.dense_affine_layers = nn.ModuleList(
-                [nn.Linear(c_h * 2, c_h * 2) for _ in range(n_dense_blocks * 2)])
+                [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks * 2)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
@@ -265,7 +265,7 @@ class AE(nn.Module):
             dec_n_conv_blocks, dec_n_dense_blocks, upsample, act, dropout_rate):
         super(AE, self).__init__()
 
-        self.static_encoder = StaticEncoder(c_in=c_in, c_h=c_h, c_out=c_h, 
+        self.static_encoder = StaticEncoder(c_in=c_in, c_h=c_h, c_out=c_cond, 
                 kernel_size=kernel_size, 
                 n_conv_blocks=s_enc_n_conv_blocks, 
                 subsample=s_subsample, 
@@ -280,7 +280,7 @@ class AE(nn.Module):
                 n_dense_blocks=d_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
 
-        self.decoder = Decoder(c_in=c_latent, c_cond=c_h, 
+        self.decoder = Decoder(c_in=c_latent, c_cond=c_cond, 
                 c_h=c_h, c_out=c_out, 
                 kernel_size=kernel_size, 
                 n_conv_blocks=dec_n_conv_blocks, 
@@ -345,8 +345,8 @@ class AE(nn.Module):
         return dec
 
     def get_static_embeddings(self, x):
-        mean, std = self.static_encoder(x)
-        return mean, std
+        out = self.static_encoder(x)
+        return out
 
 class LatentDiscriminator(nn.Module):
     def __init__(self, input_size, output_size, c_in, c_h, kernel_size, 

@@ -168,6 +168,7 @@ class Evaluater(object):
     def infer_default(self):
         # using the first sample from in_test
         content_utt, _, _, cond_utt, _ = self.indexes[0]
+        print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
         self.inference_one_utterance(content, cond, f'{args.output_path}.src2tar.wav')
@@ -181,7 +182,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('-config', '-c', default='config.yaml')
     parser.add_argument('-data_dir', '-d', 
-            default='/storage/feature/voice_conversion/trimmed_vctk_waveform/librosa/split_10_0.1')
+            default='/storage/feature/voice_conversion/trimmed_vctk_waveform/librosa/split_10_0.1/sr_22050')
     parser.add_argument('-val_set', default='in_test')
     parser.add_argument('-val_index_file', default='in_test_samples_4000.json')
     parser.add_argument('-norm_param_file', default='mean_std.json')

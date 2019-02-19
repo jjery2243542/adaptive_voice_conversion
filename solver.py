@@ -91,7 +91,7 @@ class Solver(object):
         self.model = cc(AE(c_in=self.config.c_in,
                 c_h=self.config.c_h,
                 c_latent=self.config.c_latent,
-                c_cond=self.config.c_h,
+                c_cond=self.config.c_cond,
                 c_out=self.config.c_in,
                 kernel_size=self.config.kernel_size,
                 bank_size=self.config.bank_size,
