@@ -234,7 +234,7 @@ class Decoder(nn.Module):
                 y = self.dropout_layer(y)
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
-                y = self.norm_layers[l](y)
+                y = self.norm_layer(y)
                 y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
                 y = self.dropout_layer(y)
                 out = y + out
