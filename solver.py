@@ -183,12 +183,12 @@ class Solver(object):
 
         loss_rec = torch.mean(torch.abs(x - dec))
 
-        meta = {'loss_rec': loss_rec.item()}
 
         self.gen_opt.zero_grad()
         loss_rec.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.gen_opt.step()
+        meta = {'loss_rec': loss_rec.item(), 'grad_norm': grad_norm.item()}
         return meta
 
     def ae_latent_step(self, data, lambda_sim, lambda_dis):
@@ -216,15 +216,15 @@ class Solver(object):
 
         loss = loss_rec + lambda_sim * loss_sim + lambda_dis * loss_dis
 
+        self.gen_opt.zero_grad()
+        loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
+        self.gen_opt.step()
+
         meta = {'loss_rec': loss_rec.item(),
                 'loss_sim': loss_sim.item(),
                 'loss_dis': loss_dis.item(),
-                'loss': loss.item()}
-
-        self.gen_opt.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.gen_opt.step()
+                'loss': loss.item(), 'grad_norm': grad_norm.item()}
 
         return meta
 
@@ -286,7 +286,8 @@ class Solver(object):
                 'neg_prob': torch.mean(neg_probs).item(),
                 'acc_pos': acc_pos.item(),
                 'acc_neg': acc_neg.item(),
-                'acc': acc.item()}
+                'acc': acc.item(), 
+                'grad_norm': grad_norm.item()}
 
         return meta
 
