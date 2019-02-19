@@ -33,6 +33,7 @@ amsgrad: False
 lambda_sim: 0.1
 lambda_dis: 0.1
 lambda_l1: 0.01
+weight_decay: 0.000001
 add_gaussian: False
 gaussian_std: 0.05
 grad_norm: 2

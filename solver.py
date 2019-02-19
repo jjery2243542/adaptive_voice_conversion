@@ -123,10 +123,10 @@ class Solver(object):
         print(self.discr)
         self.gen_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad)  
+                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
                 lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad)  
+                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         print(self.gen_opt)
         print(self.dis_opt)
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
