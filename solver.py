@@ -188,7 +188,7 @@ class Solver(object):
         loss_rec.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.gen_opt.step()
-        meta = {'loss_rec': loss_rec.item(), 'grad_norm': grad_norm.item()}
+        meta = {'loss_rec': loss_rec.item(), 'grad_norm': grad_norm}
         return meta
 
     def ae_latent_step(self, data, lambda_sim, lambda_dis, lambda_l1):
@@ -227,9 +227,7 @@ class Solver(object):
                 'loss_dis': loss_dis.item(),
                 'loss_l1': loss_l1.item(),
                 'loss': loss.item(), 
-                'grad_norm': grad_norm.item()}
-
-
+                'grad_norm': grad_norm}
         return meta
 
     def dis_latent_step(self, data_pos, data_neg, lambda_dis):
@@ -291,8 +289,7 @@ class Solver(object):
                 'acc_pos': acc_pos.item(),
                 'acc_neg': acc_neg.item(),
                 'acc': acc.item(), 
-                'grad_norm': grad_norm.item()}
-
+                'grad_norm': grad_norm}
         return meta
 
     def ae_pretrain(self, n_iterations):
