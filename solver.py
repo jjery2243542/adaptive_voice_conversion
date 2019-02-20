@@ -191,21 +191,22 @@ class Solver(object):
         meta = {'loss_rec': loss_rec.item(), 'grad_norm': grad_norm}
         return meta
 
-    def ae_latent_step(self, data, lambda_sim, lambda_dis, lambda_l1):
+    def ae_latent_step(self, data, lambda_sim, lambda_far, alpha_far, lambda_dis, lambda_l1):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
-            enc, enc_pos, emb, emb_pos, dec = self.model(self.noise_adder(x), 
+            enc, enc_pos, emb, emb_pos, emb_neg, dec = self.model(self.noise_adder(x), 
                     self.noise_adder(x_pos), 
                     self.noise_adder(x_neg),
                     mode='latent_ae')
         else:
-            enc, enc_pos, emb, emb_pos, dec = self.model(x, 
+            enc, enc_pos, emb, emb_pos, emb_neg, dec = self.model(x, 
                     x_pos, 
                     x_neg, 
                     mode='latent_ae')
 
         loss_rec = torch.mean(torch.abs(x - dec))
         loss_sim = torch.mean((emb - emb_pos) ** 2)
+        loss_far = torch.mean(F.relu(alpha_far - (emb - emb_neg) ** 2))
         loss_l1 = torch.mean(torch.abs(enc))
 
         vals = self.discr(enc, enc_pos)
@@ -215,7 +216,8 @@ class Solver(object):
 
         loss_dis = criterion(vals, halfs_label)
 
-        loss = loss_rec + lambda_sim * loss_sim + lambda_dis * loss_dis + lambda_l1 * loss_l1
+        loss = loss_rec + lambda_sim * loss_sim + lambda_far * loss_far + \
+                + lambda_dis * loss_dis + lambda_l1 * loss_l1
 
         self.gen_opt.zero_grad()
         loss.backward()
@@ -224,6 +226,7 @@ class Solver(object):
 
         meta = {'loss_rec': loss_rec.item(),
                 'loss_sim': loss_sim.item(),
+                'loss_far': loss_far.item(),
                 'loss_dis': loss_dis.item(),
                 'loss_l1': loss_l1.item(),
                 'loss': loss.item(), 
@@ -336,7 +339,9 @@ class Solver(object):
             for ae_step in range(self.config.ae_steps):
                 data = next(self.train_iter)
                 gen_meta = self.ae_latent_step(data, 
-                        lambda_sim=self.config.lambda_sim, 
+                        lambda_sim=self.config.lambda_sim,
+                        alpha_far=self.config.alpha_far,
+                        lambda_far=self.config.lambda_far,
                         lambda_dis=lambda_dis,
                         lambda_l1=self.config.lambda_l1)
                 self.logger.scalars_summary(f'{self.args.tag}/ae_train', gen_meta, 
@@ -351,13 +356,14 @@ class Solver(object):
 
             loss_rec = gen_meta['loss_rec']
             loss_sim = gen_meta['loss_sim']
+            loss_far = gen_meta['loss_far']
             loss_dis = gen_meta['loss_dis']
             loss_l1 = gen_meta['loss_l1']
             acc = dis_meta['acc']
 
             print(f'[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_sim={loss_sim:.2f}, '
-                    f'loss_dis={loss_dis:.2f}, loss_l1={loss_l1:.2f}, '
-                    f'acc={acc:.2f}, lambda_dis={lambda_dis:.1e}     ', 
+                    f'loss_far={loss_far:.2f}, loss_dis={loss_dis:.2f}, loss_l1={loss_l1:.2f}, '
+                    f'acc={acc:.2f}, lambda={lambda_dis:.1e}   ', 
                     end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:

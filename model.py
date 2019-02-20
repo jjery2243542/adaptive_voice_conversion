@@ -304,12 +304,13 @@ class AE(nn.Module):
             # static operation
             emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
+            emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
             # decode
             dec = self.decoder(enc, emb_pos)
-            return enc, enc_pos, emb, emb_pos, dec
+            return enc, enc_pos, emb, emb_pos, emb_neg, dec
         elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)

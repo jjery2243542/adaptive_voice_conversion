@@ -31,6 +31,8 @@ beta1: 0.5
 beta2: 0.999
 amsgrad: False
 lambda_sim: 0.01
+lambda_far: 0.01
+alpha_far: 0.01
 lambda_dis: 0.01
 lambda_l1: 0.01
 weight_decay: 0.000001
