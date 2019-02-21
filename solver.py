@@ -205,8 +205,8 @@ class Solver(object):
                     mode='latent_ae')
 
         loss_rec = torch.mean(torch.abs(x - dec))
-        loss_sim = torch.mean((emb - emb_pos) ** 2)
-        loss_far = torch.mean(F.relu(alpha_far - (emb - emb_neg) ** 2))
+        loss_sim = torch.mean(torch.mean((emb - emb_pos) ** 2, dim=1))
+        loss_far = torch.mean(F.relu(alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
         loss_l1 = torch.mean(torch.abs(enc))
 
         vals = self.discr(enc, enc_pos)
