@@ -94,8 +94,6 @@ class Solver(object):
                 c_cond=self.config.c_cond,
                 c_out=self.config.c_in,
                 kernel_size=self.config.kernel_size,
-                bank_size=self.config.bank_size,
-                bank_scale=self.config.bank_scale,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
                 d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
@@ -109,13 +107,10 @@ class Solver(object):
                 dropout_rate=self.config.dropout_rate))
         print(self.model)
 
-        discr_input_size = self.config.segment_size / reduce(lambda x, y: x*y, self.config.d_subsample)
+        discr_input_size = self.config.segment_size // reduce(lambda x, y: x*y, self.config.d_subsample)
         self.discr = cc(LatentDiscriminator(input_size=discr_input_size,
                 output_size=1, 
                 c_in=self.config.c_latent, 
-                c_h=self.config.dis_c_h, 
-                kernel_size=self.config.dis_kernel_size,
-                n_conv_layers=self.config.dis_n_conv_layers,
                 n_dense_layers=self.config.dis_n_dense_layers,
                 d_h=self.config.dis_d_h, 
                 act=self.config.act, 

@@ -14,14 +14,11 @@ dec_n_dense_blocks: 0
 upsample: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2] 
 act: 'lrelu'
 dropout_rate: 0.5
-dis_c_h: 256
-dis_kernel_size: 5
-dis_n_conv_layers: 3
 dis_d_h: 1024
-dis_n_dense_layers: 2
+dis_n_dense_layers: 3
 dis_dropout_rate: 0.3
-segment_size: 8192
-batch_size: 12
+segment_size: 16384
+batch_size: 8
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002

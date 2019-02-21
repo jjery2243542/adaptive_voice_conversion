@@ -30,6 +30,10 @@ def upsample(x, scale_factor=2):
     x_up = F.interpolate(x, scale_factor=2, mode='nearest')
     return x_up
 
+def flatten(x):
+    out = x.contiguous().view(x.size(0), x.size(1) * x.size(2))
+    return out
+
 '''DEPRECATED
 def append_cond(x, cond):
     # x = [batch_size, x_channels, length]
@@ -119,25 +123,20 @@ class StaticEncoder(nn.Module):
         return out
 
 class DynamicEncoder(nn.Module):
-    def __init__(self, c_in, c_h, c_out, kernel_size, bank_size, bank_scale, 
-            n_conv_blocks, subsample, n_dense_blocks, act, dropout_rate):
+    def __init__(self, c_in, c_h, c_out, kernel_size, 
+            n_conv_blocks, subsample, n_dense_blocks, 
+            act, dropout_rate):
         super(DynamicEncoder, self).__init__()
 
         self.c_in = c_in
         self.c_h = c_h
         self.c_out = c_out
         self.kernel_size = kernel_size
-        self.bank_size = bank_size
-        self.bank_scale = bank_scale
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
         self.act = get_act(act)
-        self.conv_bank = nn.ModuleList(
-                [nn.Conv1d(c_in, c_h, kernel_size=k) for k in \
-                range(bank_scale, bank_size + 1, bank_scale)])
-        in_channels = c_h * (bank_size // bank_scale) + c_in
-        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=1)
+        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -154,9 +153,7 @@ class DynamicEncoder(nn.Module):
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
-        out = conv_bank(x, self.conv_bank, act=self.act)
-        # dimension reduction layer
-        out = pad_layer(out, self.in_conv_layer)
+        out = pad_layer(x, self.in_conv_layer)
 
         # convolution blocks
         for l in range(self.n_conv_blocks):
@@ -181,7 +178,7 @@ class DynamicEncoder(nn.Module):
             y = self.act(y)
             y = self.dense_norm_layers[l*2+1](y)
             y = self.dropout_layer(y)
-            out = out + y
+            out = y + out
 
         out = pad_layer(out, self.out_conv_layer)
         return out
@@ -208,13 +205,13 @@ class Decoder(nn.Module):
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
-                [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks * 2)])
+                [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.dense_affine_layers = nn.ModuleList(
-                [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks * 2)])
+                [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
@@ -225,19 +222,19 @@ class Decoder(nn.Module):
             y = pad_layer(out, self.first_conv_layers[l])
             y = self.act(y)
             y = self.norm_layer(y)
-            y = append_cond(y, self.conv_affine_layers[l*2](cond))
+            y = append_cond(y, self.conv_affine_layers[l](cond))
             y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             if self.upsample[l] > 1:
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
                 y = self.norm_layer(y)
-                y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
+                y = append_cond(y, self.conv_affine_layers[l](cond))
                 y = self.dropout_layer(y)
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
                 y = self.norm_layer(y)
-                y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
+                y = append_cond(y, self.conv_affine_layers[l](cond))
                 y = self.dropout_layer(y)
                 out = y + out
 
@@ -245,14 +242,14 @@ class Decoder(nn.Module):
             y = self.first_dense_layers[l](y)
             y = self.act(y)
             y = self.norm_layer(y)
-            y = append_cond(y, self.dense_affine_layers[l*2](cond))
+            y = append_cond(y, self.dense_affine_layers[l](cond))
             y = self.dropout_layer(y)
             y = self.second_dense_layers[l](y)
             y = self.act(y)
             y = self.norm_layer(y)
-            y = append_cond(y, self.dense_affine_layers[l*2+1](cond))
+            y = append_cond(y, self.dense_affine_layers[l](cond))
             y = self.dropout_layer(y)
-            out = out + y
+            out = y + out
         out = pad_layer(out, self.out_conv_layer)
         return out
 
@@ -260,7 +257,6 @@ class AE(nn.Module):
     def __init__(self, c_in, c_h,
             c_latent, c_cond,
             c_out, kernel_size,
-            bank_size, bank_scale,
             s_enc_n_conv_blocks, s_enc_n_dense_blocks, 
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
             s_subsample, d_subsample, 
@@ -276,7 +272,6 @@ class AE(nn.Module):
 
         self.dynamic_encoder = DynamicEncoder(c_in=c_in, c_h=c_h, c_out=c_latent, 
                 kernel_size=kernel_size, 
-                bank_size=bank_size, bank_scale=bank_scale,
                 n_conv_blocks=d_enc_n_conv_blocks, 
                 subsample=d_subsample, 
                 n_dense_blocks=d_enc_n_dense_blocks, 
@@ -352,38 +347,29 @@ class AE(nn.Module):
         return out
 
 class LatentDiscriminator(nn.Module):
-    def __init__(self, input_size, output_size, c_in, c_h, kernel_size, 
-            n_conv_layers, n_dense_layers, d_h, act, dropout_rate):
+    def __init__(self, input_size, output_size, c_in, n_dense_layers, d_h, act, dropout_rate):
         super(LatentDiscriminator, self).__init__()
         self.input_size = input_size
         self.output_size = output_size
         self.c_in = c_in
-        self.c_h = c_h
-        self.kernel_size = kernel_size
-        self.n_conv_layers = n_conv_layers
         self.n_dense_layers = n_dense_layers
         self.d_h = d_h
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
-        self.conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
-                for _ in range(n_conv_layers)])
-        dense_input_size = input_size 
-        for l in range(n_conv_layers):
-            dense_input_size = ceil(dense_input_size * 0.5)
-        dense_input_size *= c_h
+        dense_input_size = input_size * c_in 
         self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, output_size)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def conv_blocks(self, inp):
-        out = pad_layer(inp, self.in_conv_layer)
-        for l in range(self.n_conv_layers):
-            out = pad_layer(out, self.conv_layers[l])
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
-        return out
+    #DEPRECATED
+    #def conv_blocks(self, inp):
+    #    out = pad_layer(inp, self.in_conv_layer)
+    #    for l in range(self.n_conv_layers):
+    #        out = pad_layer(out, self.conv_layers[l])
+    #        out = self.act(out)
+    #        out = self.dropout_layer(out)
+    #    out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
+    #    return out
 
     def dense_blocks(self, inp):
         out = inp
@@ -395,8 +381,7 @@ class LatentDiscriminator(nn.Module):
         return out
 
     def forward(self, x, x_context):
-        x_vec = self.conv_blocks(x)
-        x_context_vec = self.conv_blocks(x_context)
+        x_vec, x_context_vec = flatten(x), flatten(x_context)
         fused = torch.cat([x_vec, x_context_vec], dim=1)
         val = self.dense_blocks(fused)
         return val
