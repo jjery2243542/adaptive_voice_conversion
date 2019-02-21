@@ -27,7 +27,7 @@ def pixel_shuffle_1d(inp, scale_factor=2):
     return shuffle_out
 
 def upsample(x, scale_factor=2):
-    x_up = F.interpolate(x, scale_factor=2, mode='nearest')
+    x_up = F.interpolate(x, scale_factor=scale_factor, mode='nearest')
     return x_up
 
 def flatten(x):
@@ -82,7 +82,7 @@ class StaticEncoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
+        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -96,6 +96,7 @@ class StaticEncoder(nn.Module):
     def forward(self, x):
         # dimension reduction layer
         out = pad_layer(x, self.in_conv_layer)
+        out = self.act(out)
 
         # convolution blocks
         for l in range(self.n_conv_blocks):
@@ -136,7 +137,7 @@ class DynamicEncoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
+        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -154,6 +155,7 @@ class DynamicEncoder(nn.Module):
 
     def forward(self, x):
         out = pad_layer(x, self.in_conv_layer)
+        out = self.act(out)
 
         # convolution blocks
         for l in range(self.n_conv_blocks):
@@ -217,6 +219,7 @@ class Decoder(nn.Module):
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
+        out = self.act(out)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])

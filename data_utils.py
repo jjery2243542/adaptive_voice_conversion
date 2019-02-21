@@ -7,13 +7,29 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-def _collate_fn(l):
-    #data_tensor = torch.from_numpy(np.array([[segment for segment in data] for data in zip(*l)]))
-    data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1).unsqueeze(dim=2)
-    segment, segment_pos, segment_neg = data_tensor
-    return segment, segment_pos, segment_neg
+class CollateFn(object):
+    def __init__(self, frame_size):
+        self.frame_size = frame_size
 
-def get_data_loader(dataset, batch_size, shuffle=True, num_workers=4, drop_last=False):
+    def make_frames(self, tensor):
+        out = tensor.view(tensor.size(0), tensor.size(1) // self.frame_size, self.frame_size)
+        out = out.transpose(1, 2)
+        return out 
+
+    def __call__(self, l):
+        data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1)
+        segment, segment_pos, segment_neg = [self.make_frames(element) for element in data_tensor]
+        return segment, segment_pos, segment_neg
+
+#DEPRECATED
+#def _collate_fn(l):
+#    #data_tensor = torch.from_numpy(np.array([[segment for segment in data] for data in zip(*l)]))
+#    data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1).unsqueeze(dim=2)
+#    segment, segment_pos, segment_neg = data_tensor
+#    return segment, segment_pos, segment_neg
+
+def get_data_loader(dataset, batch_size, frame_size, shuffle=True, num_workers=4, drop_last=False):
+    _collate_fn = CollateFn(frame_size=frame_size) 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, 
             num_workers=num_workers, collate_fn=_collate_fn, pin_memory=True)
     return dataloader

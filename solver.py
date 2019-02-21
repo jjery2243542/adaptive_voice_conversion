@@ -73,12 +73,14 @@ class Solver(object):
                 os.path.join(data_dir, self.args.val_index_file), 
                 segment_size=self.config.segment_size)
 
-        self.train_loader = get_data_loader(self.train_dataset, 
+        self.train_loader = get_data_loader(self.train_dataset,
+                frame_size=self.config.frame_size,
                 batch_size=self.config.batch_size, 
                 shuffle=self.config.shuffle, 
                 num_workers=4, drop_last=False)
 
         self.val_loader = get_data_loader(self.val_dataset, 
+                frame_size=self.config.frame_size,
                 batch_size=self.config.batch_size, 
                 shuffle=self.config.shuffle, 
                 num_workers=4, drop_last=False)
@@ -88,11 +90,11 @@ class Solver(object):
 
     def build_model(self): 
         # create model, discriminator, optimizers
-        self.model = cc(AE(c_in=self.config.c_in,
+        self.model = cc(AE(c_in=self.config.frame_size,
                 c_h=self.config.c_h,
                 c_latent=self.config.c_latent,
                 c_cond=self.config.c_cond,
-                c_out=self.config.c_in,
+                c_out=self.config.frame_size,
                 kernel_size=self.config.kernel_size,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
@@ -107,7 +109,7 @@ class Solver(object):
                 dropout_rate=self.config.dropout_rate))
         print(self.model)
 
-        discr_input_size = self.config.segment_size // reduce(lambda x, y: x*y, self.config.d_subsample)
+        discr_input_size = self.config.segment_size // (reduce(lambda x, y: x*y, self.config.d_subsample) * self.config.frame_size)
         self.discr = cc(LatentDiscriminator(input_size=discr_input_size,
                 output_size=1, 
                 c_in=self.config.c_latent, 

@@ -1,24 +1,24 @@
-c_in: 1
-c_h: 128
-c_latent: 64
+c_h: 256
+c_latent: 128
 c_cond: 128
-kernel_size: 5
-s_enc_n_conv_blocks: 10 
+kernel_size: 11
+s_enc_n_conv_blocks: 5 
 s_enc_n_dense_blocks: 4
-d_enc_n_conv_blocks: 10
+d_enc_n_conv_blocks: 8
 d_enc_n_dense_blocks: 0
-s_subsample: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
-d_subsample: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
-dec_n_conv_blocks: 10
+s_subsample: [1, 1, 1, 1, 1]
+d_subsample: [1, 1, 1, 1, 1, 1, 1, 1]
+dec_n_conv_blocks: 8
 dec_n_dense_blocks: 0
-upsample: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2] 
+upsample: [1, 1, 1, 1, 1, 1, 1, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
 dis_d_h: 1024
 dis_n_dense_layers: 3
 dis_dropout_rate: 0.3
 segment_size: 16384
-batch_size: 8
+frame_size: 512
+batch_size: 16
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002
@@ -30,10 +30,10 @@ lambda_far: 0.1
 alpha_far: 0.01
 lambda_dis: 0.1
 lambda_l1: 0
-weight_decay: 0.000001
+weight_decay: 0.00001
 add_gaussian: False
 gaussian_std: 0.05
-grad_norm: 2
+grad_norm: 1
 ae_steps: 1
-dis_steps: 3
+dis_steps: 5
 sched_iters: 50000
