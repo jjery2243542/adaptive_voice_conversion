@@ -78,14 +78,12 @@ class Evaluater(object):
 
     def build_model(self): 
         # create model, discriminator, optimizers
-        self.model = cc(AE(c_in=self.config.c_in,
+        self.model = cc(AE(c_in=self.config.frame_size,
                 c_h=self.config.c_h,
                 c_latent=self.config.c_latent,
                 c_cond=self.config.c_cond,
-                c_out=self.config.c_in,
+                c_out=self.config.frame_size,
                 kernel_size=self.config.kernel_size,
-                bank_size=self.config.bank_size,
-                bank_scale=self.config.bank_scale,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
                 d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
@@ -130,7 +128,7 @@ class Evaluater(object):
         tensor = [self.pkl_data[key][t:t + self.config.segment_size] for key, t, _, _, _ in small_indexes]
         speakers = [key[:len('p000')] for key, _, _, _, _  in small_indexes]
         # add the dimension for channel
-        tensor = torch.from_numpy(np.array(tensor)).unsqueeze(dim=1)
+        tensor = self.seg_make_frames(torch.from_numpy(np.array(tensor)))
         dataset = TensorDataset(tensor)
         dataloader = DataLoader(dataset, batch_size=20, shuffle=False, num_workers=0)
         all_embs = []
@@ -156,10 +154,24 @@ class Evaluater(object):
         plt.savefig(output_path)
         return
 
+    def utt_make_frames(self, x):
+        remains = x.size(0) % self.config.frame_size
+        if remains != 0:
+            x = F.pad(x, (0, remains))
+        out = x.view(1, x.size(0) // self.config.frame_size, self.config.frame_size).transpose(1, 2)
+        return out
+
+    def seg_make_frames(self, xs):
+        # xs = [batch_size, segment_size]
+        # ys = [batch_size, frame_size, segment_size // frame_size]
+        ys = xs.view(xs.size(0), xs.size(1) // self.config.frame_size, self.config.frame_size).transpose(1, 2)
+        return ys
+
     def inference_one_utterance(self, x, x_cond, output_path):
-        x = x.view(1, 1, x.size(0))
-        x_cond = x_cond.view(1, 1, x_cond.size(0))
+        x = self.utt_make_frames(x)
+        x_cond = self.utt_make_frames(x_cond)
         dec = self.model.inference(x, x_cond)
+        dec = dec.transpose(1, 2).contiguous().view(dec.size(0) * dec.size(1) * dec.size(2))
         dec = dec * self.std + self.mean
         dec = dec.detach().cpu().numpy()
         write(output_path, rate=22050, data=dec)
