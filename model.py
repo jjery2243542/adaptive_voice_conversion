@@ -97,11 +97,8 @@ class StaticEncoder(nn.Module):
         self.output_layer = nn.Linear(d_h, c_out)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def forward(self, x):
-        # dimension reduction layer
-        out = pad_layer(x, self.in_conv_layer)
-        out = self.act(out)
-
+    def conv_blocks(self, inp):
+        out = inp
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
@@ -113,11 +110,10 @@ class StaticEncoder(nn.Module):
             if self.subsample[l] > 1:
                 out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
             out = y + out
+        return out
 
-        # dense layer
-        out = self.in_dense_layer(flatten(out))
-        out = self.act(out)
-
+    def dense_blocks(self, inp):
+        out = inp
         # dense layers
         for l in range(self.n_dense_blocks):
             y = self.first_dense_layers[l](out)
@@ -127,6 +123,22 @@ class StaticEncoder(nn.Module):
             y = self.act(y)
             y = self.dropout_layer(y)
             out = out + y
+        return out
+
+    def forward(self, x):
+        # dimension reduction layer
+        out = pad_layer(x, self.in_conv_layer)
+        out = self.act(out)
+
+        # conv blocks
+        out = self.conv_blocks(out)
+
+        # combine dense layer
+        out = self.in_dense_layer(flatten(out))
+        out = self.act(out)
+
+        # dense blocks
+        out = self.dense_blocks(out)
         out = self.output_layer(out)
         return out
 
