@@ -179,7 +179,7 @@ class Evaluater(object):
 
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, _, cond_utt, _ = self.indexes[0]
+        content_utt, _, _, cond_utt, _ = self.indexes[2]
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()

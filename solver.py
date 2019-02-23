@@ -90,7 +90,8 @@ class Solver(object):
 
     def build_model(self): 
         # create model, discriminator, optimizers
-        self.model = cc(AE(c_in=self.config.frame_size,
+        self.model = cc(AE(input_size=self.config.segment_size // self.config.frame_size,
+                c_in=self.config.frame_size,
                 c_h=self.config.c_h,
                 c_latent=self.config.c_latent,
                 c_cond=self.config.c_cond,
@@ -98,6 +99,7 @@ class Solver(object):
                 kernel_size=self.config.kernel_size,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
+                s_d_h=self.config.s_d_h,
                 d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
                 d_enc_n_dense_blocks=self.config.d_enc_n_dense_blocks,
                 s_subsample=self.config.s_subsample,
@@ -108,11 +110,14 @@ class Solver(object):
                 act=self.config.act,
                 dropout_rate=self.config.dropout_rate))
         print(self.model)
-
-        discr_input_size = self.config.segment_size // (reduce(lambda x, y: x*y, self.config.d_subsample) * self.config.frame_size)
+        discr_input_size = self.config.segment_size // \
+                (reduce(lambda x, y: x*y, self.config.d_subsample) * self.config.frame_size)
         self.discr = cc(LatentDiscriminator(input_size=discr_input_size,
                 output_size=1, 
-                c_in=self.config.c_latent, 
+                c_in=self.config.c_latent,
+                c_h=self.config.dis_c_h,
+                kernel_size=self.config.dis_kernel_size,
+                n_conv_layers=self.config.dis_n_conv_layers,
                 n_dense_layers=self.config.dis_n_dense_layers,
                 d_h=self.config.dis_d_h, 
                 act=self.config.act, 
