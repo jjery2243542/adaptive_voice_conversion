@@ -108,8 +108,10 @@ class StaticEncoder(nn.Module):
             y = self.act(y)
             y = self.dropout_layer(y)
             if self.subsample[l] > 1:
-                out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
-            out = y + out
+                #out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
+                out = y
+            else:
+                out = y + out
         return out
 
     def dense_blocks(self, inp):
@@ -184,8 +186,10 @@ class DynamicEncoder(nn.Module):
             y = self.norm_layer(y)
             y = self.dropout_layer(y)
             if self.subsample[l] > 1:
-                out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
-            out = y + out
+                #out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
+                out = y
+            else:
+                out = y + out
 
         for l in range(self.n_dense_blocks):
             y = self.first_dense_layers[l](out)
@@ -249,12 +253,13 @@ class Decoder(nn.Module):
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
                 y = self.norm_layer(y)
                 y = append_cond(y, self.conv_affine_layers[l](cond))
-                y = self.dropout_layer(y)
-                out = y + upsample(out, scale_factor=self.upsample[l]) 
+                out = y
+                #y = self.dropout_layer(y)
+                #out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
                 y = self.norm_layer(y)
                 y = append_cond(y, self.conv_affine_layers[l](cond))
-                y = self.dropout_layer(y)
+                #y = self.dropout_layer(y)
                 out = y + out
 
         for l in range(self.n_dense_blocks):
@@ -262,12 +267,12 @@ class Decoder(nn.Module):
             y = self.act(y)
             y = self.norm_layer(y)
             y = append_cond(y, self.dense_affine_layers[l](cond))
-            y = self.dropout_layer(y)
+            #y = self.dropout_layer(y)
             y = self.second_dense_layers[l](y)
             y = self.act(y)
             y = self.norm_layer(y)
             y = append_cond(y, self.dense_affine_layers[l](cond))
-            y = self.dropout_layer(y)
+            #y = self.dropout_layer(y)
             out = y + out
         out = pad_layer(out, self.out_conv_layer)
         return out
