@@ -193,7 +193,7 @@ class Solver(object):
         meta = {'loss_rec': loss_rec.item(), 'grad_norm': grad_norm}
         return meta
 
-    def ae_latent_step(self, data, lambda_sim, lambda_far, alpha_far, lambda_dis, lambda_l1):
+    def ae_latent_step(self, data, lambda_dis):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
             enc, enc_pos, emb, emb_pos, emb_neg, dec = self.model(self.noise_adder(x), 
@@ -208,7 +208,7 @@ class Solver(object):
 
         loss_rec = torch.mean(torch.abs(x - dec))
         loss_sim = torch.mean(torch.mean((emb - emb_pos) ** 2, dim=1))
-        loss_far = torch.mean(F.relu(alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
+        loss_far = torch.mean(F.relu(self.config.alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
         loss_l1 = torch.mean(torch.abs(enc))
 
         vals = self.discr(enc, enc_pos)
@@ -218,8 +218,8 @@ class Solver(object):
 
         loss_dis = criterion(vals, halfs_label)
 
-        loss = loss_rec + lambda_sim * loss_sim + lambda_far * loss_far + \
-                + lambda_dis * loss_dis + lambda_l1 * loss_l1
+        loss = self.config.lambda_rec * loss_rec + self.config.lambda_sim * loss_sim + \
+                self.config.lambda_far*loss_far + lambda_dis*loss_dis + self.config.lambda_l1*loss_l1
 
         self.gen_opt.zero_grad()
         loss.backward()
@@ -341,11 +341,7 @@ class Solver(object):
             for ae_step in range(self.config.ae_steps):
                 data = next(self.train_iter)
                 gen_meta = self.ae_latent_step(data, 
-                        lambda_sim=self.config.lambda_sim,
-                        alpha_far=self.config.alpha_far,
-                        lambda_far=self.config.lambda_far,
-                        lambda_dis=lambda_dis,
-                        lambda_l1=self.config.lambda_l1)
+                        lambda_dis=lambda_dis)
                 self.logger.scalars_summary(f'{self.args.tag}/ae_train', gen_meta, 
                         iteration * self.config.ae_steps + ae_step)
 

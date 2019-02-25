@@ -1,7 +1,7 @@
 c_h: 128
 c_latent: 128
 c_cond: 256
-kernel_size: 45
+kernel_size: 50
 s_enc_n_conv_blocks: 6
 s_enc_n_dense_blocks: 4
 s_d_h: 512
@@ -29,6 +29,7 @@ dis_lr: 0.0002
 beta1: 0.5
 beta2: 0.9
 amsgrad: False
+lambda_rec: 1
 lambda_sim: 0.01
 lambda_far: 0
 alpha_far: 0
