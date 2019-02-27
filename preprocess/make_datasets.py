@@ -51,7 +51,6 @@ if __name__ == '__main__':
     test_speakers = int(sys.argv[4])
     test_proportion = float(sys.argv[5])
     sample_rate = int(sys.argv[6])
-    feature_type = sys.argv[7]
 
     speaker_ids = read_speaker_info(speaker_info_path)
     random.shuffle(speaker_ids)
@@ -70,7 +69,7 @@ if __name__ == '__main__':
         train_path_list += path_list[:-test_data_size]
         in_test_path_list += path_list[-test_data_size:]
 
-    with open(os.path.join(output_dir, 'in_test_files.txt')) as f:
+    with open(os.path.join(output_dir, 'in_test_files.txt'), 'w') as f:
         for path in in_test_path_list:
             f.write(f'{path}\n')
 
@@ -78,7 +77,7 @@ if __name__ == '__main__':
         path_list = speaker2filenames[speaker]
         out_test_path_list += path_list
 
-    with open(os.path.join(output_dir, 'out_test_files.txt')) as f:
+    with open(os.path.join(output_dir, 'out_test_files.txt'), 'w') as f:
         for path in out_test_path_list:
             f.write(f'{path}\n')
 
@@ -92,7 +91,7 @@ if __name__ == '__main__':
             if i % 500 == 0 or i == len(path_list) - 1:
                 print(f'processing {i} files')
             filename = path.strip().split('/')[-1]
-            wav_data = feature_extraction(path, sr=sample_rate)
+            wav_data = spec_feature_extraction(path)
             data[filename] = wav_data
         #    if dset == 'train':
         #        all_train_data.append(wav_data)

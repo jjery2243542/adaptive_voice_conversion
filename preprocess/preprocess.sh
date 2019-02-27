@@ -1,7 +1,7 @@
 stage=0
 #segment_size=16384
 segment_size=128
-data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_waveform/librosa/split_10_0.1/sr_22050
+data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/
 raw_data_dir=/groups/jjery2243542/data/raw/VCTK-Corpus
 n_out_speakers=10
 test_prop=0.1
