@@ -91,10 +91,10 @@ class StaticEncoder(nn.Module):
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
             for sub, _ in zip(subsample, range(n_conv_blocks))])
-        self.in_dense_layer = nn.Linear(int(c_h * input_size / reduce(lambda x, y: x*y, subsample)), d_h)
-        self.first_dense_layers = nn.ModuleList([nn.Linear(d_h, d_h) for _ in range(n_dense_blocks)])
-        self.second_dense_layers = nn.ModuleList([nn.Linear(d_h, d_h) for _ in range(n_dense_blocks)])
-        self.output_layer = nn.Linear(d_h, c_out)
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
+        self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
+        self.output_layer = nn.Linear(c_h, c_out)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def conv_blocks(self, inp):
@@ -132,11 +132,8 @@ class StaticEncoder(nn.Module):
 
         # conv blocks
         out = self.conv_blocks(out)
-
-        # combine dense layer
-        out = self.in_dense_layer(flatten(out))
-        out = self.act(out)
-
+        # avg pooling
+        out = self.pooling_layer(out) 
         # dense blocks
         out = self.dense_blocks(out)
         out = self.output_layer(out)
@@ -172,6 +169,7 @@ class DynamicEncoder(nn.Module):
     def forward(self, x):
         out = pad_layer(x, self.in_conv_layer)
         out = self.act(out)
+        out = self.norm_layer(y)
 
         # convolution blocks
         for l in range(self.n_conv_blocks):

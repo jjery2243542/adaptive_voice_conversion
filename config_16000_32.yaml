@@ -1,10 +1,10 @@
-c_h: 128
+s_c_h: 256
+d_c_h: 128
 c_latent: 128
 c_cond: 256
-kernel_size: 50
+kernel_size: 60
 s_enc_n_conv_blocks: 6
 s_enc_n_dense_blocks: 4
-s_d_h: 512
 d_enc_n_conv_blocks: 9
 d_enc_n_dense_blocks: 0
 s_subsample: [1, 2, 1, 2, 1, 2]
@@ -20,7 +20,7 @@ dis_n_conv_layers: 2
 dis_d_h: 1024
 dis_n_dense_layers: 3
 dis_dropout_rate: 0.3
-segment_size: 8192
+segment_size: 16384
 frame_size: 16
 batch_size: 16
 shuffle: True

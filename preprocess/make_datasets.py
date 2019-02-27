@@ -7,7 +7,8 @@ import os
 from collections import defaultdict
 import re
 import numpy as np
-import json 
+import json
+from tacotron.utils import get_spectrograms
 
 def read_speaker_info(speaker_info_path):
     speaker_ids = []
@@ -27,10 +28,14 @@ def read_filenames(root_dir):
         speaker2filenames[speaker_id].append(path)
     return speaker2filenames
 
-def feature_extraction(wav_file, sr):
+def wave_feature_extraction(wav_file, sr):
     y, sr = librosa.load(wav_file, sr)
     y, _ = librosa.effects.trim(y, top_db=20)
     return y
+
+def spec_feature_extraction(wav_file):
+    _, mag = get_spectrograms(wav_file)
+    return mag
 
 def my_std(data, mean):
     square_sum = 0.
@@ -46,6 +51,7 @@ if __name__ == '__main__':
     test_speakers = int(sys.argv[4])
     test_proportion = float(sys.argv[5])
     sample_rate = int(sys.argv[6])
+    feature_type = sys.argv[7]
 
     speaker_ids = read_speaker_info(speaker_info_path)
     random.shuffle(speaker_ids)
@@ -56,6 +62,7 @@ if __name__ == '__main__':
     speaker2filenames = read_filenames(data_dir)
 
     train_path_list, in_test_path_list, out_test_path_list = [], [], []
+
     for speaker in train_speaker_ids:
         path_list = speaker2filenames[speaker]
         random.shuffle(path_list)
@@ -87,19 +94,19 @@ if __name__ == '__main__':
             filename = path.strip().split('/')[-1]
             wav_data = feature_extraction(path, sr=sample_rate)
             data[filename] = wav_data
-            if dset == 'train':
-                all_train_data.append(wav_data)
-        if dset == 'train':
-            all_train_data = np.concatenate(all_train_data)
-            mean = all_train_data.mean()
-            std = all_train_data.std()
-            print(f'mean={mean:.3f}, std={std:.3f}')
-            attr = {'mean': float(mean), 'std': float(std)}
-            with open(os.path.join(output_dir, 'mean_std.json'), 'w') as f:
-                json.dump(attr, f)
-        for key, value in data.items():
-            value = (value - mean) / std
-            data[key] = value
+        #    if dset == 'train':
+        #        all_train_data.append(wav_data)
+        #if dset == 'train':
+        #    all_train_data = np.concatenate(all_train_data)
+        #    mean = all_train_data.mean()
+        #    std = all_train_data.std()
+        #    print(f'mean={mean:.3f}, std={std:.3f}')
+        #    attr = {'mean': float(mean), 'std': float(std)}
+        #    with open(os.path.join(output_dir, 'mean_std.json'), 'w') as f:
+        #        json.dump(attr, f)
+        #for key, value in data.items():
+        #    value = (value - mean) / std
+        #    data[key] = value
         with open(output_path, 'wb') as f:
             pickle.dump(data, f)
 
