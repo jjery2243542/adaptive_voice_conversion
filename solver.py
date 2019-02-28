@@ -137,6 +137,12 @@ class Solver(object):
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
         return
 
+    def weighted_l1_loss(self, dec, x):
+        criterion = nn.L1Loss()
+        n_priority_freq = int(3000 / (self.config.sample_rate * 0.5) * self.config.c_in)
+        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
+        return loss_rec
+
     # DEPRECATED
     #def val_step(self, data):
     #    self.model.eval()
@@ -186,9 +192,7 @@ class Solver(object):
                     x_neg,
                     mode='ae')
 
-        loss_rec = torch.mean(torch.abs(x - dec))
-
-
+        loss_rec = self.weighted_l1_loss(dec, x)
         self.gen_opt.zero_grad()
         loss_rec.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
@@ -209,7 +213,7 @@ class Solver(object):
                     x_neg, 
                     mode='latent_ae')
 
-        loss_rec = torch.mean(torch.abs(x - dec))
+        loss_rec = self.weighted_l1_loss(dec, x)
         loss_sim = torch.mean(torch.mean((emb - emb_pos) ** 2, dim=1))
         loss_far = torch.mean(F.relu(self.config.alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
         loss_l1 = torch.mean(torch.abs(enc))
