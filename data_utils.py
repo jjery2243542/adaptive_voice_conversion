@@ -12,7 +12,7 @@ class CollateFn(object):
         self.frame_size = frame_size
 
     def make_frames(self, tensor):
-        out = tensor.view(tensor.size(0), tensor.size(1) // self.frame_size, self.frame_size)
+        out = tensor.view(tensor.size(0), tensor.size(1) // self.frame_size, self.frame_size * tensor.size(2))
         out = out.transpose(1, 2)
         return out 
 
@@ -20,13 +20,6 @@ class CollateFn(object):
         data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1)
         segment, segment_pos, segment_neg = [self.make_frames(element) for element in data_tensor]
         return segment, segment_pos, segment_neg
-
-#DEPRECATED
-#def _collate_fn(l):
-#    #data_tensor = torch.from_numpy(np.array([[segment for segment in data] for data in zip(*l)]))
-#    data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1).unsqueeze(dim=2)
-#    segment, segment_pos, segment_neg = data_tensor
-#    return segment, segment_pos, segment_neg
 
 def get_data_loader(dataset, batch_size, frame_size, shuffle=True, num_workers=4, drop_last=False):
     _collate_fn = CollateFn(frame_size=frame_size) 
