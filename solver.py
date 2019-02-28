@@ -69,9 +69,9 @@ class Solver(object):
                 os.path.join(data_dir, self.args.train_index_file), 
                 segment_size=self.config.segment_size)
 
-        self.val_dataset = PickleDataset(os.path.join(data_dir, f'{self.args.val_set}.pkl'), 
-                os.path.join(data_dir, self.args.val_index_file), 
-                segment_size=self.config.segment_size)
+        #self.val_dataset = PickleDataset(os.path.join(data_dir, f'{self.args.val_set}.pkl'), 
+        #        os.path.join(data_dir, self.args.val_index_file), 
+        #        segment_size=self.config.segment_size)
 
         self.train_loader = get_data_loader(self.train_dataset,
                 frame_size=self.config.frame_size,
@@ -79,11 +79,11 @@ class Solver(object):
                 shuffle=self.config.shuffle, 
                 num_workers=4, drop_last=False)
 
-        self.val_loader = get_data_loader(self.val_dataset, 
-                frame_size=self.config.frame_size,
-                batch_size=self.config.batch_size, 
-                shuffle=self.config.shuffle, 
-                num_workers=4, drop_last=False)
+        #self.val_loader = get_data_loader(self.val_dataset, 
+        #        frame_size=self.config.frame_size,
+        #        batch_size=self.config.batch_size, 
+        #        shuffle=self.config.shuffle, 
+        #        num_workers=4, drop_last=False)
 
         self.train_iter = infinite_iter(self.train_loader)
         return
@@ -91,15 +91,18 @@ class Solver(object):
     def build_model(self): 
         # create model, discriminator, optimizers
         self.model = cc(AE(input_size=self.config.segment_size // self.config.frame_size,
-                c_in=self.config.frame_size,
-                c_h=self.config.c_h,
+                c_in=self.config.c_in * self.config.frame_size,
+                s_c_h=self.config.s_c_h,
+                d_c_h=self.config.d_c_h,
                 c_latent=self.config.c_latent,
                 c_cond=self.config.c_cond,
-                c_out=self.config.frame_size,
+                c_out=self.config.c_in * self.config.frame_size,
+                c_bank=self.config.c_bank,
+                bank_size=self.config.bank_size,
+                bank_scale=self.config.bank_scale,
                 kernel_size=self.config.kernel_size,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
-                s_d_h=self.config.s_d_h,
                 d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
                 d_enc_n_dense_blocks=self.config.d_enc_n_dense_blocks,
                 s_subsample=self.config.s_subsample,

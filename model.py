@@ -35,16 +35,16 @@ def flatten(x):
     out = x.contiguous().view(x.size(0), x.size(1) * x.size(2))
     return out
 
-'''DEPRECATED
-def append_cond(x, cond):
-    # x = [batch_size, x_channels, length]
-    # cond = [batch_size, x_channels]
-    cond = cond.unsqueeze(dim=2)
-    cond = cond.expand(*cond.size()[:-1], x.size(-1))
-    out = torch.cat([x, cond], dim=1)
-    #out = x + cond
-    return out
-'''
+#DEPRECATED
+#def append_cond(x, cond):
+#    # x = [batch_size, x_channels, length]
+#    # cond = [batch_size, x_channels]
+#    cond = cond.unsqueeze(dim=2)
+#    cond = cond.expand(*cond.size()[:-1], x.size(-1))
+#    out = torch.cat([x, cond], dim=1)
+#    #out = x + cond
+#    return out
+
 def append_cond(x, cond):
     # x = [batch_size, x_channels, length]
     # cond = [batch_size, x_channels * 2]
@@ -73,25 +73,30 @@ def get_act(act):
 
 class StaticEncoder(nn.Module):
     def __init__(self, input_size, 
-            c_in, c_h, c_out, kernel_size, 
+            c_in, c_h, c_out, kernel_size,
+            bank_size, bank_scale, c_bank,
             n_conv_blocks, subsample, 
-            d_h, n_dense_blocks, act, dropout_rate):
+            n_dense_blocks, act, dropout_rate):
         super(StaticEncoder, self).__init__()
         self.input_size = input_size
         self.c_in = c_in
         self.c_h = c_h
         self.c_out = c_out
+        self.c_bank = c_bank
         self.kernel_size = kernel_size
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
+        self.conv_bank = nn.ModuleList(
+                [nn.Conv1d(c_in, c_bank, kernel_size=k) for k in range(bank_scale, bank_size + 1, bank_scale)])
+        in_channels = c_bank * (bank_size // bank_scale) + c_in
+        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
             for sub, _ in zip(subsample, range(n_conv_blocks))])
-        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.pooling_layer = nn.AdaptiveAvgPool1d(1)
         self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
         self.output_layer = nn.Linear(c_h, c_out)
@@ -126,14 +131,15 @@ class StaticEncoder(nn.Module):
         return out
 
     def forward(self, x):
+        out = conv_bank(x, self.conv_bank, act=self.act)
         # dimension reduction layer
-        out = pad_layer(x, self.in_conv_layer)
+        out = pad_layer(out, self.in_conv_layer)
         out = self.act(out)
 
         # conv blocks
         out = self.conv_blocks(out)
         # avg pooling
-        out = self.pooling_layer(out) 
+        out = self.pooling_layer(out).squeeze(2) 
         # dense blocks
         out = self.dense_blocks(out)
         out = self.output_layer(out)
@@ -141,6 +147,7 @@ class StaticEncoder(nn.Module):
 
 class DynamicEncoder(nn.Module):
     def __init__(self, c_in, c_h, c_out, kernel_size, 
+            bank_size, bank_scale, c_bank, 
             n_conv_blocks, subsample, n_dense_blocks, 
             act, dropout_rate):
         super(DynamicEncoder, self).__init__()
@@ -148,12 +155,17 @@ class DynamicEncoder(nn.Module):
         self.c_in = c_in
         self.c_h = c_h
         self.c_out = c_out
+        self.bank_size = bank_size
+        self.bank_scale = bank_scale
         self.kernel_size = kernel_size
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
+        self.conv_bank = nn.ModuleList(
+                [nn.Conv1d(c_in, c_bank, kernel_size=k) for k in range(bank_scale, bank_size + 1, bank_scale)])
+        in_channels = c_bank * (bank_size // bank_scale) + c_in
+        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -167,9 +179,11 @@ class DynamicEncoder(nn.Module):
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
-        out = pad_layer(x, self.in_conv_layer)
+        out = conv_bank(x, self.conv_bank, act=self.act)
+        # dimension reduction layer
+        out = pad_layer(out, self.in_conv_layer)
         out = self.act(out)
-        out = self.norm_layer(y)
+        out = self.norm_layer(out)
 
         # convolution blocks
         for l in range(self.n_conv_blocks):
@@ -229,7 +243,7 @@ class Decoder(nn.Module):
         self.dense_affine_layers = nn.ModuleList(
                 [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
+        #self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
@@ -240,7 +254,7 @@ class Decoder(nn.Module):
             y = self.act(y)
             y = self.norm_layer(y)
             y = append_cond(y, self.conv_affine_layers[l](cond))
-            y = self.dropout_layer(y)
+            #y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             if self.upsample[l] > 1:
@@ -268,9 +282,10 @@ class Decoder(nn.Module):
 
 class AE(nn.Module):
     def __init__(self, input_size, 
-            c_in, c_h,
+            c_in, s_c_h, d_c_h,
             c_latent, c_cond,
-            c_out, kernel_size, s_d_h,
+            c_bank, bank_size, bank_scale,
+            c_out, kernel_size,
             s_enc_n_conv_blocks, s_enc_n_dense_blocks,
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
             s_subsample, d_subsample, 
@@ -279,15 +294,18 @@ class AE(nn.Module):
         super(AE, self).__init__()
 
         self.static_encoder = StaticEncoder(input_size=input_size, 
-                c_in=c_in, c_h=c_h, c_out=c_cond, 
+                c_in=c_in, c_h=s_c_h, c_out=c_cond, 
+                c_bank=c_bank,
+                bank_size=bank_size, bank_scale=bank_scale,
                 kernel_size=kernel_size, 
                 n_conv_blocks=s_enc_n_conv_blocks, 
                 subsample=s_subsample,
-                d_h=s_d_h,
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
 
-        self.dynamic_encoder = DynamicEncoder(c_in=c_in, c_h=c_h, c_out=c_latent, 
+        self.dynamic_encoder = DynamicEncoder(c_in=c_in, c_h=d_c_h, c_out=c_latent, 
+                c_bank=c_bank,
+                bank_size=bank_size, bank_scale=bank_scale,
                 kernel_size=kernel_size, 
                 n_conv_blocks=d_enc_n_conv_blocks, 
                 subsample=d_subsample, 
@@ -295,7 +313,7 @@ class AE(nn.Module):
                 act=act, dropout_rate=dropout_rate)
 
         self.decoder = Decoder(c_in=c_latent, c_cond=c_cond, 
-                c_h=c_h, c_out=c_out, 
+                c_h=d_c_h, c_out=c_out, 
                 kernel_size=kernel_size, 
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
