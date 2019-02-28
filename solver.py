@@ -186,8 +186,10 @@ class Solver(object):
                     x_neg,
                     mode='ae')
 
-        loss_rec = torch.mean(torch.abs(x - dec))
-
+        # apply priority freq
+        criterion = nn.L1Loss()
+        n_priority_freq = int(3000 / (self.config.sample_rate * 0.5) * self.config.c_in)
+        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
 
         self.gen_opt.zero_grad()
         loss_rec.backward()
@@ -209,7 +211,9 @@ class Solver(object):
                     x_neg, 
                     mode='latent_ae')
 
-        loss_rec = torch.mean(torch.abs(x - dec))
+        criterion = nn.L1Loss()
+        n_priority_freq = int(3000 / (self.config.sample_rate * 0.5) * self.config.c_in)
+        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
         loss_sim = torch.mean(torch.mean((emb - emb_pos) ** 2, dim=1))
         loss_far = torch.mean(F.relu(self.config.alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
         loss_l1 = torch.mean(torch.abs(enc))

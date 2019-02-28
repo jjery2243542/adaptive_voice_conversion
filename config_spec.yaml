@@ -1,10 +1,10 @@
 c_in: 1025
 s_c_h: 512
-d_c_h: 512
+d_c_h: 256
 c_bank: 128
 c_latent: 256
 c_cond: 512
-kernel_size: 3
+kernel_size: 7
 bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
@@ -25,7 +25,7 @@ dis_d_h: 1024
 dis_n_dense_layers: 3
 dis_dropout_rate: 0.3
 segment_size: 128
-frame_size: 2
+frame_size: 1
 batch_size: 16
 shuffle: True
 gen_lr: 0.0001
@@ -46,3 +46,4 @@ grad_norm: 1
 ae_steps: 1
 dis_steps: 5
 sched_iters: 50000
+sample_rate: 24000
