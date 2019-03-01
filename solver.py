@@ -193,11 +193,15 @@ class Solver(object):
                     mode='ae')
 
         loss_rec = self.weighted_l1_loss(dec, x)
+        loss_kl = torch.mean((dec - x) ** 2)
+        loss = self.config.lambda_rec * loss_rec + self.config.lambda_kl * loss_kl
         self.gen_opt.zero_grad()
-        loss_rec.backward()
+        loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.gen_opt.step()
-        meta = {'loss_rec': loss_rec.item(), 'grad_norm': grad_norm}
+        meta = {'loss_rec': loss_rec.item(), 
+                'loss_kl': loss_kl.item(),
+                'grad_norm': grad_norm}
         return meta
 
     def ae_latent_step(self, data, lambda_dis):
@@ -216,7 +220,7 @@ class Solver(object):
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_sim = torch.mean(torch.mean((emb - emb_pos) ** 2, dim=1))
         loss_far = torch.mean(F.relu(self.config.alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
-        loss_l1 = torch.mean(torch.abs(enc))
+        loss_kl = torch.mean(enc ** 2)
 
         vals = self.discr(enc, enc_pos)
 
@@ -226,7 +230,7 @@ class Solver(object):
         loss_dis = criterion(vals, halfs_label)
 
         loss = self.config.lambda_rec * loss_rec + self.config.lambda_sim * loss_sim + \
-                self.config.lambda_far*loss_far + lambda_dis*loss_dis + self.config.lambda_l1*loss_l1
+                self.config.lambda_far*loss_far + lambda_dis*loss_dis + self.config.lambda_kl*loss_kl
 
         self.gen_opt.zero_grad()
         loss.backward()
@@ -237,7 +241,7 @@ class Solver(object):
                 'loss_sim': loss_sim.item(),
                 'loss_far': loss_far.item(),
                 'loss_dis': loss_dis.item(),
-                'loss_l1': loss_l1.item(),
+                'loss_kl': loss_kl.item(),
                 'loss': loss.item(), 
                 'grad_norm': grad_norm}
         return meta
@@ -363,11 +367,11 @@ class Solver(object):
             loss_sim = gen_meta['loss_sim']
             loss_far = gen_meta['loss_far']
             loss_dis = gen_meta['loss_dis']
-            loss_l1 = gen_meta['loss_l1']
+            loss_kl = gen_meta['loss_kl']
             acc = dis_meta['acc']
 
             print(f'[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_sim={loss_sim:.2f}, '
-                    f'loss_far={loss_far:.2f}, loss_dis={loss_dis:.2f}, loss_l1={loss_l1:.2f}, '
+                    f'loss_far={loss_far:.2f}, loss_dis={loss_dis:.2f}, loss_kl={loss_kl:.2f}, '
                     f'acc={acc:.2f}, lambda={lambda_dis:.1e}   ', 
                     end='\r')
 

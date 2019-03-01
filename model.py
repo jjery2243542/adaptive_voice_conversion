@@ -135,7 +135,6 @@ class StaticEncoder(nn.Module):
         # dimension reduction layer
         out = pad_layer(out, self.in_conv_layer)
         out = self.act(out)
-
         # conv blocks
         out = self.conv_blocks(out)
         # avg pooling
@@ -327,8 +326,9 @@ class AE(nn.Module):
             emb_pos = self.static_encoder(x_pos)
             # dynamic operation
             enc = self.dynamic_encoder(x)
+            noise = enc.new(*enc.size()).normal_(0, 1)
             # decode
-            dec = self.decoder(enc, emb_pos)
+            dec = self.decoder(enc + noise, emb_pos)
             return enc, emb_pos, dec
         elif mode == 'latent_ae':
             # static operation
@@ -337,9 +337,10 @@ class AE(nn.Module):
             emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
+            noise = enc.new(*enc.size()).normal_(0, 1)
             enc_pos = self.dynamic_encoder(x_pos)
             # decode
-            dec = self.decoder(enc, emb_pos)
+            dec = self.decoder(enc + noise, emb_pos)
             return enc, enc_pos, emb, emb_pos, emb_neg, dec
         elif mode == 'latent_dis_pos':
             # dynamic operation
@@ -360,8 +361,10 @@ class AE(nn.Module):
                 enc = self.dynamic_encoder(x)
                 enc_pos = self.dynamic_encoder(x_pos)
             # decode
-            dec = self.decoder(enc, emb_pos)
-            dec_syn = self.decoder(enc_pos, emb_neg)
+            noise = enc.new(*enc.size()).normal_(0, 1)
+            dec = self.decoder(enc + noise, emb_pos)
+            noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_pos + noise, emb_neg)
             return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
         elif mode == 'raw_dis':
             # static operation
@@ -397,6 +400,57 @@ class LatentDiscriminator(nn.Module):
         self.act = get_act(act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.conv_layers = nn.ModuleList(
+                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_layers)])
+        dense_input_size = int(input_size * (0.5**n_conv_layers) * c_h)
+        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
+                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
+                [nn.Linear(d_h, output_size)])
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
+
+    def conv_blocks(self, inp):
+        out = pad_layer(inp, self.in_conv_layer)
+        for l in range(self.n_conv_layers):
+            out = pad_layer(out, self.conv_layers[l])
+            out = self.act(out)
+            out = self.dropout_layer(out)
+        out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
+        return out
+
+    def dense_blocks(self, inp):
+        out = inp
+        for l in range(self.n_dense_layers - 1):
+            out = self.dense_layers[l](out)
+            out = self.act(out)
+            out = self.dropout_layer(out)
+        out = self.dense_layers[-1](out)
+        return out
+
+    def forward(self, x, x_context):
+        x_vec = self.conv_blocks(x)
+        x_context_vec = self.conv_blocks(x_context)
+        fused = torch.cat([x_vec, x_context_vec], dim=1)
+        val = self.dense_blocks(fused)
+        return val
+
+class ProjectionDiscriminator(nn.Module):
+    def __init__(self, input_size, output_size, 
+            c_in, c_hs, kernel_size, n_conv_blocks, 
+            n_dense_layers, d_h, act, dropout_rate):
+        super(ProjectionDiscriminator, self).__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.c_in = c_in
+        self.c_hs = c_h
+        self.kernel_size = kernel_size
+        self.n_conv_layers = n_conv_layers
+        self.n_dense_layers = n_dense_layers
+        self.d_h = d_h
+        self.act = get_act(act)
+        self.in_conv_layer = nn.Conv2d()
+        self.first_conv_layers = nn.ModuleList(
+                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
+                        for _, c_h_p, c_h_n in zip(cs_h)])
+        self.second_conv_layers = nn.ModuleList(
                 [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_layers)])
         dense_input_size = int(input_size * (0.5**n_conv_layers) * c_h)
         self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
