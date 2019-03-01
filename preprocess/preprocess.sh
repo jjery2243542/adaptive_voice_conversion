@@ -1,7 +1,7 @@
 stage=0
 #segment_size=16384
-segment_size=128
-data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/
+segment_size=256
+data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/sr_24000_hop_150
 raw_data_dir=/groups/jjery2243542/data/raw/VCTK-Corpus
 n_out_speakers=10
 test_prop=0.1

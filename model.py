@@ -18,6 +18,20 @@ def pad_layer(inp, layer):
     out = layer(inp)
     return out
 
+def pad_layer_2d(inp, layer):
+    kernel_size = layer.kernel_size[0]
+    if kernel_size % 2 == 0:
+        pad = (kernel_size//2, kernel_size//2 - 1, kernel_size//2, kernel_size//2 - 1)
+    else:
+        pad = (kernel_size//2, kernel_size//2, kernel_size//2, kernel_size//2)
+    # padding
+    inp = F.pad(inp, 
+            pad=pad,
+            mode='reflect')
+    out = layer(inp)
+    return out
+
+
 def pixel_shuffle_1d(inp, scale_factor=2):
     batch_size, channels, in_width = inp.size()
     channels //= scale_factor
@@ -71,12 +85,31 @@ def get_act(act):
     else:
         return nn.ReLU()
 
+class MLP(nn.Module):
+    def __init__(self, c_in, c_h, n_blocks, act):
+        super(MLP, self).__init__()
+        self.act = get_act(act)
+        self.n_blocks = n_blocks
+        self.in_dense_layer = nn.Linear(c_in, c_h)
+        self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_blocks)])
+        self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_blocks)])
+
+    def forward(self, x):
+        h = self.in_dense_layer(x)
+        for l in range(self.n_blocks):
+            y = self.first_dense_layers[l](h)
+            y = self.act(y)
+            y = self.second_dense_layers[l](y)
+            y = self.act(y)
+            h = h + y
+        return h
+
 class StaticEncoder(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_out, kernel_size,
             bank_size, bank_scale, c_bank,
-            n_conv_blocks, subsample, 
-            n_dense_blocks, act, dropout_rate):
+            n_conv_blocks, n_dense_blocks, 
+            subsample, act, dropout_rate):
         super(StaticEncoder, self).__init__()
         self.input_size = input_size
         self.c_in = c_in
@@ -138,7 +171,7 @@ class StaticEncoder(nn.Module):
         # conv blocks
         out = self.conv_blocks(out)
         # avg pooling
-        out = self.pooling_layer(out).squeeze(2) 
+        out = self.pooling_layer(out).squeeze(2)
         # dense blocks
         out = self.dense_blocks(out)
         out = self.output_layer(out)
@@ -214,8 +247,8 @@ class DynamicEncoder(nn.Module):
 
 # Conv_blocks followed by dense blocks
 class Decoder(nn.Module):
-    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, 
-            n_conv_blocks, upsample, n_dense_blocks, act, dropout_rate):
+    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, n_mlp_blocks,
+            n_conv_blocks, upsample, n_dense_blocks, act):
         super(Decoder, self).__init__()
         self.c_in = c_in
         self.c_h = c_h
@@ -226,6 +259,7 @@ class Decoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
         self.act = get_act(act)
+        self.mlp = MLP(c_in=c_cond, c_h=c_cond, n_blocks=n_mlp_blocks, act=act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
@@ -242,11 +276,11 @@ class Decoder(nn.Module):
         self.dense_affine_layers = nn.ModuleList(
                 [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
-        #self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
         out = self.act(out)
+        cond = self.mlp(cond)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
@@ -288,7 +322,8 @@ class AE(nn.Module):
             s_enc_n_conv_blocks, s_enc_n_dense_blocks,
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
             s_subsample, d_subsample, 
-            dec_n_conv_blocks, dec_n_dense_blocks, 
+            dec_n_conv_blocks, dec_n_dense_blocks,
+            dec_n_mlp_blocks,
             upsample, act, dropout_rate):
         super(AE, self).__init__()
 
@@ -313,15 +348,16 @@ class AE(nn.Module):
 
         self.decoder = Decoder(c_in=c_latent, c_cond=c_cond, 
                 c_h=d_c_h, c_out=c_out, 
-                kernel_size=kernel_size, 
+                kernel_size=kernel_size,
+                n_mlp_blocks=dec_n_mlp_blocks,
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
                 n_dense_blocks=dec_n_dense_blocks, 
-                act=act, dropout_rate=dropout_rate)
+                act=act)
 
     def forward(self, x, x_pos, x_neg, mode):
         # for autoencoder pretraining
-        if mode == 'ae': 
+        if mode == 'pretrain_ae': 
             # static operation
             emb_pos = self.static_encoder(x_pos)
             # dynamic operation
@@ -334,14 +370,29 @@ class AE(nn.Module):
             # static operation
             emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
-            emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             noise = enc.new(*enc.size()).normal_(0, 1)
             enc_pos = self.dynamic_encoder(x_pos)
             # decode
             dec = self.decoder(enc + noise, emb_pos)
-            return enc, enc_pos, emb, emb_pos, emb_neg, dec
+            return enc, enc_pos, emb, emb_pos, dec
+        elif mode == 'ae':
+            # static operation
+            emb = self.static_encoder(x)
+            emb_pos = self.static_encoder(x_pos)
+            emb_random = emb.new(*emb.size()).normal_()
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            enc_pos = self.dynamic_encoder(x_pos)
+            enc_neg = self.dynamic_encoder(x_neg)
+            # decode
+            noise = enc.new(*enc.size()).normal_(0, 1)
+            dec = self.decoder(enc + noise, emb_pos)
+            noise = enc_neg.new(*enc_neg.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_neg + noise, emb_random)
+            emb_rec = self.static_encoder(emb_random)
+            return enc, enc_pos, emb, emb_pos, emb_random, emb_rec, dec, dec_syn
         elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)
@@ -352,27 +403,13 @@ class AE(nn.Module):
             enc = self.dynamic_encoder(x)
             enc_neg = self.dynamic_encoder(x_neg)
             return enc, enc_neg 
-        elif mode == 'raw_ae':
-            with torch.no_grad():
-                # static operation
-                emb_pos = self.static_encoder(x_pos)
-                emb_neg = self.static_encoder(x_neg)
-                # dynamic operation
-                enc = self.dynamic_encoder(x)
-                enc_pos = self.dynamic_encoder(x_pos)
-            # decode
-            noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + noise, emb_pos)
-            noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos + noise, emb_neg)
-            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
-        elif mode == 'raw_dis':
-            # static operation
-            emb_neg = self.static_encoder(x_neg)
+        elif mode == 'dis':
             # dynamic operation
             enc = self.dynamic_encoder(x)
-            dec_syn = self.decoder(enc, emb_neg)
-            return enc, emb_neg, dec_syn
+            emb_random = enc.new(*enc.size()).normal_()
+            noise = enc.new(*enc.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc + noise, emb_random)
+            return enc, emb_random, dec_syn
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)
@@ -434,54 +471,54 @@ class LatentDiscriminator(nn.Module):
 
 class ProjectionDiscriminator(nn.Module):
     def __init__(self, input_size, output_size, 
-            c_in, c_hs, kernel_size, n_conv_blocks, 
-            n_dense_layers, d_h, act, dropout_rate):
+            c_in, c_h, c_cond, 
+            kernel_size, n_conv_blocks, 
+            n_dense_layers, d_h, act):
         super(ProjectionDiscriminator, self).__init__()
-        self.input_size = input_size
-        self.output_size = output_size
-        self.c_in = c_in
-        self.c_hs = c_h
-        self.kernel_size = kernel_size
-        self.n_conv_layers = n_conv_layers
+        # input_size is a tuple
+        self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
-        self.d_h = d_h
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv2d()
+        self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList(
-                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
-                        for _, c_h_p, c_h_n in zip(cs_h)])
+                [nn.Conv2d(c_h, c_h, kernel_size=kernel_size) for _ in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(
-                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_layers)])
-        dense_input_size = int(input_size * (0.5**n_conv_layers) * c_h)
-        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
+                [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
+        dense_input_size = input_size
+        for _ in range(n_conv_blocks):
+            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, output_size)])
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
+        self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
-        out = pad_layer(inp, self.in_conv_layer)
-        for l in range(self.n_conv_layers):
-            out = pad_layer(out, self.conv_layers[l])
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
+        out = pad_layer_2d(inp, self.in_conv_layer)
+        for l in range(self.n_conv_blocks):
+            y = pad_layer_2d(out, self.first_conv_layers[l])
+            y = self.act(y)
+            y = pad_layer_2d(out, self.second_conv_layers[l])
+            y = self.act(y)
+            out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
+        out = self.pooling_layer(out)
+        out = out.squeeze(2).squeeze(2)
         return out
 
     def dense_blocks(self, inp):
-        out = inp
+        h = inp
         for l in range(self.n_dense_layers - 1):
-            out = self.dense_layers[l](out)
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = self.dense_layers[-1](out)
-        return out
+            h = self.dense_layers[l](h)
+            h = self.act(h)
+        out = self.dense_layers[-1](h)
+        return out, h
 
-    def forward(self, x, x_context):
+    def forward(self, x, cond=None):
         x_vec = self.conv_blocks(x)
-        x_context_vec = self.conv_blocks(x_context)
-        fused = torch.cat([x_vec, x_context_vec], dim=1)
-        val = self.dense_blocks(fused)
-        return val
+        out, h = self.dense_blocks(x_vec)
+        if cond is not None:
+            out += torch.sum(h * self.cond_linear(cond), dim=1, keepdim=True)
+        return out
 
 if __name__ == '__main__':
     ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 
