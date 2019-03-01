@@ -39,5 +39,5 @@ if __name__ == '__main__':
     if args.dis_iters > 0:
         solver.dis_latent_pretrain(n_iterations=args.dis_iters)
 
-    if args.iters > 0:
+    if args.latent_iters > 0:
         solver.ae_latent_train(n_iterations=args.iters)
