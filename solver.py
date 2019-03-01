@@ -193,7 +193,6 @@ class Solver(object):
                     mode='ae')
 
         loss_rec = self.weighted_l1_loss(dec, x)
-        loss_kl = torch.mean((dec - x) ** 2)
         loss = self.config.lambda_rec * loss_rec + self.config.lambda_kl * loss_kl
         self.gen_opt.zero_grad()
         loss.backward()
@@ -219,7 +218,6 @@ class Solver(object):
 
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_sim = torch.mean(torch.mean((emb - emb_pos) ** 2, dim=1))
-        loss_far = torch.mean(F.relu(self.config.alpha_far - torch.mean((emb - emb_neg) ** 2, dim=1)))
         loss_kl = torch.mean(enc ** 2)
 
         vals = self.discr(enc, enc_pos)
