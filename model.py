@@ -18,6 +18,20 @@ def pad_layer(inp, layer):
     out = layer(inp)
     return out
 
+def pad_layer_2d(inp, layer):
+    kernel_size = layer.kernel_size[0]
+    if kernel_size % 2 == 0:
+        pad = (kernel_size//2, kernel_size//2 - 1, kernel_size//2, kernel_size//2 - 1)
+    else:
+        pad = (kernel_size//2, kernel_size//2, kernel_size//2, kernel_size//2)
+    # padding
+    inp = F.pad(inp, 
+            pad=pad,
+            mode='reflect')
+    out = layer(inp)
+    return out
+
+
 def pixel_shuffle_1d(inp, scale_factor=2):
     batch_size, channels, in_width = inp.size()
     channels //= scale_factor
@@ -434,54 +448,54 @@ class LatentDiscriminator(nn.Module):
 
 class ProjectionDiscriminator(nn.Module):
     def __init__(self, input_size, output_size, 
-            c_in, c_hs, kernel_size, n_conv_blocks, 
-            n_dense_layers, d_h, act, dropout_rate):
+            c_in, c_h, c_cond, 
+            kernel_size, n_conv_blocks, 
+            n_dense_layers, d_h, act):
         super(ProjectionDiscriminator, self).__init__()
-        self.input_size = input_size
-        self.output_size = output_size
-        self.c_in = c_in
-        self.c_hs = c_h
-        self.kernel_size = kernel_size
-        self.n_conv_layers = n_conv_layers
+        # input_size is a tuple
+        self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
-        self.d_h = d_h
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv2d()
+        self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList(
-                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) \
-                        for _, c_h_p, c_h_n in zip(cs_h)])
+                [nn.Conv2d(c_h, c_h, kernel_size=kernel_size) for _ in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(
-                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_layers)])
-        dense_input_size = int(input_size * (0.5**n_conv_layers) * c_h)
-        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
+                [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
+        dense_input_size = input_size
+        for _ in range(n_conv_blocks):
+            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, output_size)])
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
+        self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
-        out = pad_layer(inp, self.in_conv_layer)
-        for l in range(self.n_conv_layers):
-            out = pad_layer(out, self.conv_layers[l])
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
+        out = pad_layer_2d(inp, self.in_conv_layer)
+        for l in range(self.n_conv_blocks):
+            y = pad_layer_2d(out, self.first_conv_layers[l])
+            y = self.act(y)
+            y = pad_layer_2d(out, self.second_conv_layers[l])
+            y = self.act(y)
+            out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
+        out = self.pooling_layer(out)
+        out = out.squeeze(2).squeeze(2)
         return out
 
     def dense_blocks(self, inp):
-        out = inp
+        h = inp
         for l in range(self.n_dense_layers - 1):
-            out = self.dense_layers[l](out)
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = self.dense_layers[-1](out)
-        return out
+            h = self.dense_layers[l](h)
+            h = self.act(h)
+        out = self.dense_layers[-1](h)
+        return out, h
 
-    def forward(self, x, x_context):
+    def forward(self, x, cond=None):
         x_vec = self.conv_blocks(x)
-        x_context_vec = self.conv_blocks(x_context)
-        fused = torch.cat([x_vec, x_context_vec], dim=1)
-        val = self.dense_blocks(fused)
-        return val
+        out, h = self.dense_blocks(x_vec)
+        if cond is not None:
+            out += torch.sum(h * self.cond_linear(cond), dim=1, keepdim=True)
+        return out
 
 if __name__ == '__main__':
     ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 
