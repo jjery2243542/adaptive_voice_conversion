@@ -10,9 +10,7 @@ if __name__ == '__main__':
     parser.add_argument('-data_dir', '-d', 
             default='/storage/feature/voice_conversion/trimmed_vctk_waveform/librosa/split_10_0.1/sr_22050')
     parser.add_argument('-train_set', default='train')
-    parser.add_argument('-val_set', default='in_test')
     parser.add_argument('-train_index_file', default='train_samples_128.json')
-    parser.add_argument('-val_index_file', default='in_test_samples_128.json')
     parser.add_argument('-logdir', default='log/')
     parser.add_argument('--load_model', action='store_true')
     parser.add_argument('--load_opt', action='store_true')
@@ -23,6 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('-tag', '-t', default='init')
     parser.add_argument('-ae_iters', default=0, type=int)
     parser.add_argument('-dis_iters', default=0, type=int)
+    parser.add_argument('-latent_iters', default=0, type=int)
     parser.add_argument('-iters', default=0, type=int)
 
     args = parser.parse_args()
@@ -41,4 +40,4 @@ if __name__ == '__main__':
         solver.dis_latent_pretrain(n_iterations=args.dis_iters)
 
     if args.iters > 0:
-        solver.train(n_iterations=args.iters)
+        solver.ae_latent_train(n_iterations=args.iters)

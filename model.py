@@ -85,12 +85,31 @@ def get_act(act):
     else:
         return nn.ReLU()
 
+class MLP(nn.Module):
+    def __init__(self, c_in, c_h, n_blocks, act):
+        super(MLP, self).__init__()
+        self.act = get_act(act)
+        self.n_blocks = n_blocks
+        self.in_dense_layer = nn.Linear(c_in, c_h)
+        self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_blocks)])
+        self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_blocks)])
+
+    def forward(self, x):
+        h = self.in_dense_layer(x)
+        for l in range(self.n_blocks):
+            y = self.first_dense_layers[l](h)
+            y = self.act(y)
+            y = self.second_dense_layers[l](y)
+            y = self.act(y)
+            h = h + y
+        return h
+
 class StaticEncoder(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_out, kernel_size,
             bank_size, bank_scale, c_bank,
-            n_conv_blocks, subsample, 
-            n_dense_blocks, act, dropout_rate):
+            n_conv_blocks, n_dense_blocks, 
+            subsample, act, dropout_rate):
         super(StaticEncoder, self).__init__()
         self.input_size = input_size
         self.c_in = c_in
@@ -152,7 +171,7 @@ class StaticEncoder(nn.Module):
         # conv blocks
         out = self.conv_blocks(out)
         # avg pooling
-        out = self.pooling_layer(out).squeeze(2) 
+        out = self.pooling_layer(out).squeeze(2)
         # dense blocks
         out = self.dense_blocks(out)
         out = self.output_layer(out)
@@ -228,8 +247,8 @@ class DynamicEncoder(nn.Module):
 
 # Conv_blocks followed by dense blocks
 class Decoder(nn.Module):
-    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, 
-            n_conv_blocks, upsample, n_dense_blocks, act, dropout_rate):
+    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, n_mlp_blocks,
+            n_conv_blocks, upsample, n_dense_blocks, act):
         super(Decoder, self).__init__()
         self.c_in = c_in
         self.c_h = c_h
@@ -240,6 +259,7 @@ class Decoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
         self.act = get_act(act)
+        self.mlp = MLP(c_in=c_cond, c_h=c_cond, n_blocks=n_mlp_blocks, act=act)
         self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
@@ -256,11 +276,11 @@ class Decoder(nn.Module):
         self.dense_affine_layers = nn.ModuleList(
                 [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
-        #self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
         out = self.act(out)
+        cond = self.mlp(cond)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
@@ -302,7 +322,8 @@ class AE(nn.Module):
             s_enc_n_conv_blocks, s_enc_n_dense_blocks,
             d_enc_n_conv_blocks, d_enc_n_dense_blocks,
             s_subsample, d_subsample, 
-            dec_n_conv_blocks, dec_n_dense_blocks, 
+            dec_n_conv_blocks, dec_n_dense_blocks,
+            dec_n_mlp_blocks,
             upsample, act, dropout_rate):
         super(AE, self).__init__()
 
@@ -327,15 +348,16 @@ class AE(nn.Module):
 
         self.decoder = Decoder(c_in=c_latent, c_cond=c_cond, 
                 c_h=d_c_h, c_out=c_out, 
-                kernel_size=kernel_size, 
+                kernel_size=kernel_size,
+                n_mlp_blocks=dec_n_mlp_blocks,
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
                 n_dense_blocks=dec_n_dense_blocks, 
-                act=act, dropout_rate=dropout_rate)
+                act=act)
 
     def forward(self, x, x_pos, x_neg, mode):
         # for autoencoder pretraining
-        if mode == 'ae': 
+        if mode == 'pretrain_ae': 
             # static operation
             emb_pos = self.static_encoder(x_pos)
             # dynamic operation
@@ -348,14 +370,29 @@ class AE(nn.Module):
             # static operation
             emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
-            emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             noise = enc.new(*enc.size()).normal_(0, 1)
             enc_pos = self.dynamic_encoder(x_pos)
             # decode
             dec = self.decoder(enc + noise, emb_pos)
-            return enc, enc_pos, emb, emb_pos, emb_neg, dec
+            return enc, enc_pos, emb, emb_pos, dec
+        elif mode == 'ae':
+            # static operation
+            emb = self.static_encoder(x)
+            emb_pos = self.static_encoder(x_pos)
+            emb_random = emb.new(*emb.size()).normal_()
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            enc_pos = self.dynamic_encoder(x_pos)
+            enc_neg = self.dynamic_encoder(x_neg)
+            # decode
+            noise = enc.new(*enc.size()).normal_(0, 1)
+            dec = self.decoder(enc + noise, emb_pos)
+            noise = enc_neg.new(*enc_neg.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_neg + noise, emb_random)
+            emb_rec = self.static_encoder(emb_random)
+            return enc, enc_pos, emb, emb_pos, emb_random, emb_rec, dec, dec_syn
         elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)
@@ -366,27 +403,13 @@ class AE(nn.Module):
             enc = self.dynamic_encoder(x)
             enc_neg = self.dynamic_encoder(x_neg)
             return enc, enc_neg 
-        elif mode == 'raw_ae':
-            with torch.no_grad():
-                # static operation
-                emb_pos = self.static_encoder(x_pos)
-                emb_neg = self.static_encoder(x_neg)
-                # dynamic operation
-                enc = self.dynamic_encoder(x)
-                enc_pos = self.dynamic_encoder(x_pos)
-            # decode
-            noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + noise, emb_pos)
-            noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos + noise, emb_neg)
-            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
-        elif mode == 'raw_dis':
-            # static operation
-            emb_neg = self.static_encoder(x_neg)
+        elif mode == 'dis':
             # dynamic operation
             enc = self.dynamic_encoder(x)
-            dec_syn = self.decoder(enc, emb_neg)
-            return enc, emb_neg, dec_syn
+            emb_random = enc.new(*enc.size()).normal_()
+            noise = enc.new(*enc.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc + noise, emb_random)
+            return enc, emb_random, dec_syn
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)
