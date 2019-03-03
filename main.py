@@ -40,4 +40,4 @@ if __name__ == '__main__':
         solver.dis_latent_pretrain(n_iterations=args.dis_iters)
 
     if args.latent_iters > 0:
-        solver.ae_latent_train(n_iterations=args.iters)
+        solver.ae_latent_train(n_iterations=args.latent_iters)
