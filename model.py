@@ -377,22 +377,22 @@ class AE(nn.Module):
             # decode
             dec = self.decoder(enc + noise, emb_pos)
             return enc, enc_pos, emb, emb_pos, dec
-        elif mode == 'ae':
-            # static operation
-            emb = self.static_encoder(x)
-            emb_pos = self.static_encoder(x_pos)
-            emb_random = emb.new(*emb.size()).normal_()
-            # dynamic operation
-            enc = self.dynamic_encoder(x)
-            enc_pos = self.dynamic_encoder(x_pos)
-            enc_neg = self.dynamic_encoder(x_neg)
+        elif mode == 'gan_ae':
+            # fixed encoder
+            with torch.no_grad():
+                # static operation
+                emb = self.static_encoder(x)
+                emb_pos = self.static_encoder(x_pos)
+                emb_neg = self.static_encoder(x_neg)
+                # dynamic operation
+                enc = self.dynamic_encoder(x)
+                enc_pos = self.dynamic_encoder(x_pos)
             # decode
             noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + noise, emb_pos)
-            noise = enc_neg.new(*enc_neg.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_neg + noise, emb_random)
-            emb_rec = self.static_encoder(emb_random)
-            return enc, enc_pos, emb, emb_pos, emb_random, emb_rec, dec, dec_syn
+            noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_pos + noise, emb_neg)
+            return enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn
         elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)
@@ -403,13 +403,16 @@ class AE(nn.Module):
             enc = self.dynamic_encoder(x)
             enc_neg = self.dynamic_encoder(x_neg)
             return enc, enc_neg 
-        elif mode == 'dis':
+        elif mode == 'dis_real':
+            emb = self.static_encoder(x)
+            return emb
+        elif mode == 'dis_fake':
             # dynamic operation
             enc = self.dynamic_encoder(x)
-            emb_random = enc.new(*enc.size()).normal_()
+            emb_neg = self.static_encoder(x_neg)
             noise = enc.new(*enc.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc + noise, emb_random)
-            return enc, emb_random, dec_syn
+            dec_syn = self.decoder(enc + noise, emb_neg)
+            return enc, emb_neg, dec_syn
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)
@@ -484,10 +487,10 @@ class ProjectionDiscriminator(nn.Module):
                 [nn.Conv2d(c_h, c_h, kernel_size=kernel_size) for _ in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(
                 [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
         dense_input_size = input_size
         for _ in range(n_conv_blocks):
             dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
         self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
                 [nn.Linear(d_h, output_size)])
@@ -514,6 +517,8 @@ class ProjectionDiscriminator(nn.Module):
         return out, h
 
     def forward(self, x, cond=None):
+        if x.dim() == 3:
+            x = x.unsqueeze(1)
         x_vec = self.conv_blocks(x)
         out, h = self.dense_blocks(x_vec)
         if cond is not None:

@@ -1,9 +1,9 @@
 c_in: 1025
-s_c_h: 256
+s_c_h: 128
 d_c_h: 128
 c_bank: 128
 c_latent: 128
-c_cond: 256
+c_cond: 128
 kernel_size: 7
 bank_size: 8 
 bank_scale: 1
@@ -25,9 +25,14 @@ la_dis_n_conv_layers: 3
 la_dis_d_h: 256
 la_dis_n_dense_layers: 3
 la_dis_dropout_rate: 0.3
+dis_c_h: 128
+dis_kernel_size: 3
+dis_n_conv_blocks: 6
+dis_n_dense_layers: 3
+dis_d_h: 128
 segment_size: 128
 frame_size: 1
-batch_size: 16
+batch_size: 8
 shuffle: True
 gen_lr: 0.0002
 la_dis_lr: 0.0001
@@ -47,6 +52,7 @@ gaussian_std: 0.1
 grad_norm: 1
 ae_steps: 1
 la_dis_steps: 5
-dis_steps: 5
+dis_steps: 1
 la_dis_sched_iters: 20000
+dis_sched_iters: 10000
 sample_rate: 24000

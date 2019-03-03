@@ -20,9 +20,10 @@ if __name__ == '__main__':
     parser.add_argument('-summary_steps', default=5000, type=int)
     parser.add_argument('-tag', '-t', default='init')
     parser.add_argument('-ae_iters', default=0, type=int)
-    parser.add_argument('-dis_iters', default=0, type=int)
+    parser.add_argument('-la_dis_iters', default=0, type=int)
     parser.add_argument('-latent_iters', default=0, type=int)
-    parser.add_argument('-iters', default=0, type=int)
+    parser.add_argument('-dis_iters', default=0, type=int)
+    parser.add_argument('-gan_iters', default=0, type=int)
 
     args = parser.parse_args()
     
@@ -36,8 +37,14 @@ if __name__ == '__main__':
     if args.ae_iters > 0:
         solver.ae_pretrain(n_iterations=args.ae_iters)
 
-    if args.dis_iters > 0:
-        solver.dis_latent_pretrain(n_iterations=args.dis_iters)
+    if args.la_dis_iters > 0:
+        solver.dis_latent_pretrain(n_iterations=args.la_dis_iters)
 
-    if args.iters > 0:
-        solver.ae_latent_train(n_iterations=args.iters)
+    if args.latent_iters > 0:
+        solver.ae_latent_train(n_iterations=args.latent_iters)
+
+    if args.dis_iters > 0:
+        solver.dis_pretrain(n_iterations=args.dis_iters)
+
+    if args.gan_iters > 0:
+        solver.ae_gan_train(n_iterations=args.gan_iters)
