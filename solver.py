@@ -6,7 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from torch.nn.utils import spectral_norm
 from model import AE, LatentDiscriminator, ProjectionDiscriminator
 from data_utils import get_data_loader
 from data_utils import PickleDataset
@@ -125,12 +124,8 @@ class Solver(object):
             kernel_size=self.config.dis_kernel_size, 
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
-            d_h=self.config.dis_d_h, act=self.config.act))
+            d_h=self.config.dis_d_h, act=self.config.act, sn=True))
         print(self.discr)
-        # apply spectral norm to discriminator
-        for m in self.discr.modules():
-            if hasattr(m, 'weight'):
-                spectral_norm(m)
         self.gen_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
@@ -327,19 +322,16 @@ class Solver(object):
 
     def ae_gan_step(self, data):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
-
-        with torch.no_grad():
-            if self.config.add_gaussian:
-                enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x), 
-                        x_pos=self.noise_adder(x_pos), 
-                        x_neg=self.noise_adder(x_neg), 
-                        mode='gan_ae')
-            else:
-                enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(x, 
-                        x_pos=x_pos, 
-                        x_neg=x_neg, 
-                        mode='gan_ae')
-
+        if self.config.add_gaussian:
+            enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x), 
+                    x_pos=self.noise_adder(x_pos), 
+                    x_neg=self.noise_adder(x_neg), 
+                    mode='gan_ae')
+        else:
+            enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(x, 
+                    x_pos=x_pos, 
+                    x_neg=x_neg, 
+                    mode='gan_ae')
         loss_rec = self.weighted_l1_loss(dec, x)
         # input for the discriminator
         fake_vals = self.discr(dec_syn, emb_neg)

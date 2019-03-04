@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from math import ceil
 from functools import reduce
+from torch.nn.utils import spectral_norm
 
 def pad_layer(inp, layer):
     kernel_size = layer.kernel_size[0]
@@ -476,25 +477,40 @@ class ProjectionDiscriminator(nn.Module):
     def __init__(self, input_size, output_size, 
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks, 
-            n_dense_layers, d_h, act):
+            n_dense_layers, d_h, act, sn):
         super(ProjectionDiscriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
         self.act = get_act(act)
-        self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
-        self.first_conv_layers = nn.ModuleList(
-                [nn.Conv2d(c_h, c_h, kernel_size=kernel_size) for _ in range(n_conv_blocks)])
-        self.second_conv_layers = nn.ModuleList(
-                [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
-        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
-        dense_input_size = input_size
-        for _ in range(n_conv_blocks):
-            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-        self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + 
-                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
-                [nn.Linear(d_h, output_size)])
-        self.cond_linear = nn.Linear(c_cond, d_h)
+        if sn:
+            self.in_conv_layer = spectral_norm(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
+            self.first_conv_layers = nn.ModuleList(
+                    [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for _ in range(n_conv_blocks)])
+            self.second_conv_layers = nn.ModuleList(
+                    [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) for _ in range(n_conv_blocks)])
+            self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+            dense_input_size = input_size
+            for _ in range(n_conv_blocks):
+                dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
+            self.dense_layers = nn.ModuleList([spectral_norm(nn.Linear(c_h, d_h))] + 
+                    [spectral_norm(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
+                    [spectral_norm(nn.Linear(d_h, output_size))])
+            self.cond_linear = spectral_norm(nn.Linear(c_cond, d_h))
+        else:
+            self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
+            self.first_conv_layers = nn.ModuleList(
+                    [nn.Conv2d(c_h, c_h, kernel_size=kernel_size) for _ in range(n_conv_blocks)])
+            self.second_conv_layers = nn.ModuleList(
+                    [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
+            self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+            dense_input_size = input_size
+            for _ in range(n_conv_blocks):
+                dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
+            self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + \
+                    [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + \
+                    [nn.Linear(d_h, output_size)])
+            self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
         out = pad_layer_2d(inp, self.in_conv_layer)
