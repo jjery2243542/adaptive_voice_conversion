@@ -320,8 +320,8 @@ class Solver(object):
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
                 'loss_fake': loss_fake.item(),
-                'pos_val': torch.mean(real_vals).item(),
-                'neg_val': torch.mean(fake_vals).item(),
+                'real_val': torch.mean(real_vals).item(),
+                'fake_val': torch.mean(fake_vals).item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -434,10 +434,10 @@ class Solver(object):
             meta = self.dis_step(data, data_prime)
             self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
-            loss_real = meta['loss_real']
-            loss_fake = meta['loss_fake']
+            real_val = meta['real_val']
+            fake_val = meta['fake_val']
 
-            print(f'D:[{iteration + 1}/{n_iterations}], loss_real={loss_real:.2f}, loss_fake={loss_fake:.2f}     ', end='\r')
+            print(f'D:[{iteration + 1}/{n_iterations}], real_val={real_val:.2f}, fake_val={fake_val:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='dis')
@@ -461,9 +461,12 @@ class Solver(object):
                         iteration * self.config.dis_steps + dis_step)
 
             loss_rec = gen_meta['loss_rec']
-            loss_dis = dis_meta['loss_dis']
+            loss_dis = gen_meta['loss_dis']
+            real_val = dis_meta['real_val']
+            fake_val = dis_meta['fake_val']
 
-            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_dis={loss_dis:.2f}     ', end='\r')
+            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_dis={loss_dis:.2f}, '
+                    f'real_val={real_val:.2f}, fake_val={fake_val:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
                 print()
