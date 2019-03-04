@@ -111,6 +111,17 @@ class Evaluater(object):
                 speaker2gender[f'p{id}'] = gender
         return speaker2gender
 
+    def plot_spectrograms(self, data, pic_path):
+        # data = [T, F]
+        data = data.T
+        print(data.shape)
+        plt.pcolor(data, cmap=plt.cm.Blues)
+        plt.xlabel('time', fontsize=20)
+        plt.ylabel('Frequency', fontsize=20)
+        plt.title(legend, fontsize=30)
+        plt.savefig(pic_path)
+        return
+
     def plot_static_embeddings(self, output_path):
         # filter the samples by speakers sampled
         # hack code 
@@ -160,26 +171,33 @@ class Evaluater(object):
         ys = xs.view(xs.size(0), xs.size(1) // self.config.frame_size, self.config.frame_size * xs.size(2)).transpose(1, 2)
         return ys
 
-    def inference_one_utterance(self, x, x_cond, output_path):
+    def inference_one_utterance(self, x, x_cond):
         x = self.utt_make_frames(x)
         x_cond = self.utt_make_frames(x_cond)
         dec = self.model.inference(x, x_cond)
         dec = dec.transpose(1, 2).squeeze(0)
         dec = dec.detach().cpu().numpy()
         wav_data = spectrogram2wav(dec)
+        #write(output_path, rate=self.config.sample_rate, data=wav_data)
+        return wav_data, dec
+
+    def write_wav_to_file(self, wav_data, output_path):
         write(output_path, rate=self.config.sample_rate, data=wav_data)
         return
 
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, _, cond_utt, _ = self.indexes[2]
+        content_utt, _, _, cond_utt, _ = self.indexes[0]
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
-        self.inference_one_utterance(content, cond, f'{args.output_path}.src2tar.wav')
+        wav_data, _ = self.inference_one_utterance(content, cond)
+        self.write_wav_to_file(wav_data, f'{args.output_path}.src2tar.wav')
         # reconstruction
-        self.inference_one_utterance(content, content, f'{args.output_path}.rec_src.wav')
-        self.inference_one_utterance(cond, cond, f'{args.output_path}.rec_tar.wav')
+        wav_data, _ = self.inference_one_utterance(content, content)
+        self.write_wav_to_file(wav_data, f'{args.output_path}.rec_src.wav')
+        wav_data, _ = self.inference_one_utterance(cond, cond)
+        self.write_wav_to_file(wav_data, f'{args.output_path}.rec_tar.wav')
         return
 
 
@@ -193,6 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('-load_model_path', default='/storage/model/adaptive_vc/model')
     parser.add_argument('--plot_speakers', action='store_true')
     parser.add_argument('-fig_output_path', default='speaker.png')
+    parser.add_argument('-spec_output_path', default='spec')
     parser.add_argument('-n_speakers', default=8, type=int)
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
     parser.add_argument('-max_samples', default=3000, type=int)

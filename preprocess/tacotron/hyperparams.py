@@ -19,7 +19,7 @@ class Hyperparams:
     max_duration = 10.0
 
     # signal processing
-    sr = 22050 # Sample rate.
+    sr = 24000 # Sample rate.
     n_fft = 2048 # fft points (samples)
     frame_shift = 0.0125 # seconds
     frame_length = 0.05 # seconds
@@ -27,7 +27,7 @@ class Hyperparams:
     win_length = int(sr*frame_length) # samples.
     n_mels = 80 # Number of Mel banks to generate
     power = 1.2 # Exponent for amplifying the predicted magnitude
-    n_iter = 50 # Number of inversion iterations
+    n_iter = 200 # Number of inversion iterations
     preemphasis = .97 # or None
     max_db = 100
     ref_db = 20
