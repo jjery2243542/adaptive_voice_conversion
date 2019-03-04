@@ -24,6 +24,7 @@ mpl.use('Agg')
 from matplotlib import pyplot as plt
 from scipy.io.wavfile import write
 import random
+from preprocess.tacotron.utils import spectrogram2wav
 
 class Evaluater(object):
     def __init__(self, config, args):
@@ -47,28 +48,14 @@ class Evaluater(object):
         self.speaker2gender = self.read_speaker_gender(self.args.speaker_info_path)
         # sampled n speakers for evaluation
         self.sample_n_speakers(self.args.n_speakers)
-        # read mean, std
-        self.mean, self.std = self.read_norm_param()
 
-    def read_norm_param(self):
-        with open(os.path.join(self.args.data_dir, self.args.norm_param_file)) as f:
-            data = json.load(f)
-        return data['mean'], data['std']
-
-    def load_model(self, load_opt=False, load_dis=False):
-        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
+    def load_model(self):
+        print(f'Load model from {self.args.load_model_path}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
-        if load_dis:
-            self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
-        if load_opt:
-            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
-        if load_dis and load_opt:
-            self.dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
 
     def load_data(self):
         data_dir = self.args.data_dir
-
         # load pkl data and sampled segments
         with open(os.path.join(data_dir, f'{self.args.val_set}.pkl'), 'rb') as f:
             self.pkl_data = pickle.load(f)
@@ -79,21 +66,25 @@ class Evaluater(object):
     def build_model(self): 
         # create model, discriminator, optimizers
         self.model = cc(AE(input_size=self.config.segment_size // self.config.frame_size,
-                c_in=self.config.frame_size,
-                c_h=self.config.c_h,
+                c_in=self.config.c_in * self.config.frame_size,
+                s_c_h=self.config.s_c_h,
+                d_c_h=self.config.d_c_h,
                 c_latent=self.config.c_latent,
                 c_cond=self.config.c_cond,
-                c_out=self.config.frame_size,
+                c_out=self.config.c_in * self.config.frame_size,
+                c_bank=self.config.c_bank,
+                bank_size=self.config.bank_size,
+                bank_scale=self.config.bank_scale,
                 kernel_size=self.config.kernel_size,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
-                s_d_h=self.config.s_d_h,
                 d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
                 d_enc_n_dense_blocks=self.config.d_enc_n_dense_blocks,
                 s_subsample=self.config.s_subsample,
                 d_subsample=self.config.d_subsample,
                 dec_n_conv_blocks=self.config.dec_n_conv_blocks,
                 dec_n_dense_blocks=self.config.dec_n_dense_blocks,
+                dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
                 act=self.config.act,
                 dropout_rate=self.config.dropout_rate))
@@ -160,23 +151,23 @@ class Evaluater(object):
         remains = x.size(0) % self.config.frame_size
         if remains != 0:
             x = F.pad(x, (0, remains))
-        out = x.view(1, x.size(0) // self.config.frame_size, self.config.frame_size).transpose(1, 2)
+        out = x.view(1, x.size(0) // self.config.frame_size, self.config.frame_size * x.size(1)).transpose(1, 2)
         return out
 
     def seg_make_frames(self, xs):
-        # xs = [batch_size, segment_size]
+        # xs = [batch_size, segment_size, channels]
         # ys = [batch_size, frame_size, segment_size // frame_size]
-        ys = xs.view(xs.size(0), xs.size(1) // self.config.frame_size, self.config.frame_size).transpose(1, 2)
+        ys = xs.view(xs.size(0), xs.size(1) // self.config.frame_size, self.config.frame_size * xs.size(2)).transpose(1, 2)
         return ys
 
     def inference_one_utterance(self, x, x_cond, output_path):
         x = self.utt_make_frames(x)
         x_cond = self.utt_make_frames(x_cond)
         dec = self.model.inference(x, x_cond)
-        dec = dec.transpose(1, 2).contiguous().view(dec.size(0) * dec.size(1) * dec.size(2))
-        dec = dec * self.std + self.mean
+        dec = dec.transpose(1, 2).squeeze(0)
         dec = dec.detach().cpu().numpy()
-        write(output_path, rate=22050, data=dec)
+        wav_data = spectrogram2wav(dec)
+        write(output_path, rate=self.config.sample_rate, data=wav_data)
         return
 
     def infer_default(self):
@@ -196,16 +187,15 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('-config', '-c', default='config.yaml')
     parser.add_argument('-data_dir', '-d', 
-            default='/storage/feature/voice_conversion/trimmed_vctk_waveform/librosa/split_10_0.1/sr_22050')
+            default='/storage/feature/voice_conversion/trimmed_vctk_spectrograms/sr_24000_hop_300/')
     parser.add_argument('-val_set', default='in_test')
-    parser.add_argument('-val_index_file', default='in_test_samples_4000.json')
-    parser.add_argument('-norm_param_file', default='mean_std.json')
+    parser.add_argument('-val_index_file', default='in_test_samples_128.json')
     parser.add_argument('-load_model_path', default='/storage/model/adaptive_vc/model')
     parser.add_argument('--plot_speakers', action='store_true')
     parser.add_argument('-fig_output_path', default='speaker.png')
     parser.add_argument('-n_speakers', default=8, type=int)
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
-    parser.add_argument('-max_samples', default=1000, type=int)
+    parser.add_argument('-max_samples', default=3000, type=int)
     parser.add_argument('--infer_default', action='store_true')
     parser.add_argument('-output_path', default='test')
 
