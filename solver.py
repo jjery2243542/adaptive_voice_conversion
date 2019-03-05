@@ -320,7 +320,7 @@ class Solver(object):
                 'grad_norm': grad_norm}
         return meta
 
-    def ae_gan_step(self, data):
+    def ae_gan_step(self, data, lambda_dis):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
             enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x), 
@@ -336,7 +336,7 @@ class Solver(object):
         # input for the discriminator
         fake_vals = self.discr(dec_syn, emb_neg)
         loss_dis = -torch.mean(fake_vals)
-        loss = self.config.lambda_rec * loss_rec + self.config.lambda_dis * loss_dis
+        loss = self.config.lambda_rec * loss_rec + lambda_dis * loss_dis
 
         self.gen_opt.zero_grad()
         loss.backward()
@@ -422,8 +422,13 @@ class Solver(object):
 
     def dis_pretrain(self, n_iterations):
         for iteration in range(n_iterations):
+            # calculate linear increasing lambda_dis
+            if iteration >= self.config.dis_sched_iters:
+                lambda_dis = self.config.lambda_dis
+            else:
+                lambda_dis = self.config.lambda_dis * (iteration + 1) / self.config.dis_sched_iters
             data, data_prime = next(self.train_iter), next(self.train_iter)
-            meta = self.dis_step(data, data_prime)
+            meta = self.dis_step(data, data_prime, lambda_dis=lambda_dis)
             self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
             real_val = meta['real_val']
