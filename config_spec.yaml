@@ -29,7 +29,7 @@ dis_c_h: 128
 dis_kernel_size: 3
 dis_n_conv_blocks: 6
 dis_n_dense_layers: 3
-dis_d_h: 128
+dis_d_h: 256
 segment_size: 128
 frame_size: 1
 batch_size: 8
@@ -44,7 +44,7 @@ lambda_rec: 10
 lambda_sim: 0.01
 lambda_srec: 1
 lambda_la_dis: 0.01
-lambda_dis: 1
+lambda_dis: 0.1
 lambda_kl: 0.01
 weight_decay: 0.0001
 add_gaussian: False
@@ -54,5 +54,5 @@ ae_steps: 1
 la_dis_steps: 5
 dis_steps: 5
 la_dis_sched_iters: 10000
-dis_sched_iters: 10000
+dis_sched_iters: 20000
 sample_rate: 24000
