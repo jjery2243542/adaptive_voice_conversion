@@ -422,13 +422,8 @@ class Solver(object):
 
     def dis_pretrain(self, n_iterations):
         for iteration in range(n_iterations):
-            # calculate linear increasing lambda_dis
-            if iteration >= self.config.dis_sched_iters:
-                lambda_dis = self.config.lambda_dis
-            else:
-                lambda_dis = self.config.lambda_dis * (iteration + 1) / self.config.dis_sched_iters
             data, data_prime = next(self.train_iter), next(self.train_iter)
-            meta = self.dis_step(data, data_prime, lambda_dis=lambda_dis)
+            meta = self.dis_step(data, data_prime)
             self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
             real_val = meta['real_val']
@@ -443,10 +438,15 @@ class Solver(object):
 
     def ae_gan_train(self, n_iterations):
         for iteration in range(n_iterations):
+            # calculate linear increasing lambda_dis
+            if iteration >= self.config.dis_sched_iters:
+                lambda_dis = self.config.lambda_dis
+            else:
+                lambda_dis = self.config.lambda_dis * (iteration + 1) / self.config.dis_sched_iters
             # AE step
             for ae_step in range(self.config.ae_steps):
                 data = next(self.train_iter)
-                gen_meta = self.ae_gan_step(data)
+                gen_meta = self.ae_gan_step(data, lambda_dis=lambda_dis)
                 self.logger.scalars_summary(f'{self.args.tag}/ae_gan_train', gen_meta, 
                         iteration * self.config.ae_steps + ae_step)
 
@@ -463,7 +463,7 @@ class Solver(object):
             fake_val = dis_meta['fake_val']
 
             print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_dis={loss_dis:.2f}, '
-                    f'real_val={real_val:.2f}, fake_val={fake_val:.2f}     ', end='\r')
+                    f'real_val={real_val:.2f}, fake_val={fake_val:.2f}, lambda={lambda_dis:.1e}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
                 print()
