@@ -379,21 +379,22 @@ class AE(nn.Module):
             dec = self.decoder(enc + noise, emb_pos)
             return enc, enc_pos, emb, emb_pos, dec
         elif mode == 'gan_ae':
-            # fixed encoder
+            # fixed dynamic encoder
             with torch.no_grad():
-                # static operation
-                emb = self.static_encoder(x)
-                emb_pos = self.static_encoder(x_pos)
-                emb_neg = self.static_encoder(x_neg)
                 # dynamic operation
                 enc = self.dynamic_encoder(x)
-                enc_pos = self.dynamic_encoder(x_pos)
+                enc_neg = self.dynamic_encoder(x_neg)
+            # static operation
+            emb = self.static_encoder(x)
+            emb_pos = self.static_encoder(x_pos)
             # decode
             noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + noise, emb_pos)
-            noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos + noise, emb_neg)
-            return enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn
+            noise = enc_neg.new(*enc_neg.size()).normal_(0, 1)
+            emb_rand = emb_pos.new(*emb_pos.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_neg + noise, emb_rand)
+            emb_rec = self.static_encoder(dec_syn)
+            return enc, enc_neg, emb, emb_pos, emb_rand, emb_rec, dec, dec_syn
         elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)

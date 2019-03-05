@@ -280,27 +280,27 @@ class Solver(object):
 
         with torch.no_grad():
             if self.config.add_gaussian:
-                emb = self.model(self.noise_adder(x),
-                        x_pos=None,
-                        x_neg=None,
-                        mode='dis_real')
+                #emb = self.model(self.noise_adder(x),
+                #        x_pos=None,
+                #        x_neg=None,
+                #        mode='dis_real')
                 _, emb_neg, dec_syn = self.model(self.noise_adder(x_prime), 
                         x_pos=None, 
                         x_neg=self.noise_adder(x_neg), 
                         mode='dis_fake')
             else:
-                emb = self.model(x,
-                        x_pos=None,
-                        x_neg=None,
-                        mode='dis_real')
+                #emb = self.model(x,
+                #        x_pos=None,
+                #        x_neg=None,
+                #        mode='dis_real')
                 _, emb_neg, dec_syn = self.model(x_prime, 
                         x_pos=None, 
                         x_neg=x_neg, 
                         mode='dis_fake')
 
         # input for the discriminator
-        real_vals = self.discr(x, emb)
-        fake_vals = self.discr(dec_syn, emb_neg)
+        real_vals = self.discr(x)
+        fake_vals = self.discr(dec_syn)
 
         loss_real = torch.mean(F.relu(1.0 - real_vals))
         loss_fake = torch.mean(F.relu(1.0 + fake_vals))
@@ -323,20 +323,24 @@ class Solver(object):
     def ae_gan_step(self, data, lambda_dis):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
-            enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x), 
+            enc, enc_neg, emb, emb_pos, emb_rand, emb_rec, dec, dec_syn = self.model(self.noise_adder(x), 
                     x_pos=self.noise_adder(x_pos), 
                     x_neg=self.noise_adder(x_neg), 
                     mode='gan_ae')
         else:
-            enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(x, 
+            enc, enc_neg, emb, emb_pos, emb_rand, emb_rec, dec, dec_syn = self.model(x, 
                     x_pos=x_pos, 
                     x_neg=x_neg, 
                     mode='gan_ae')
+
         loss_rec = self.weighted_l1_loss(dec, x)
+        loss_sim = torch.mean((emb - emb_pos) ** 2)
+        loss_srec = torch.mean((emb_rand - emb_rec) ** 2)
         # input for the discriminator
-        fake_vals = self.discr(dec_syn, emb_neg)
+        fake_vals = self.discr(dec_syn)
         loss_dis = -torch.mean(fake_vals)
-        loss = self.config.lambda_rec * loss_rec + lambda_dis * loss_dis
+        loss = self.config.lambda_rec * loss_rec + self.config.lambda_sim * loss_sim + \
+                self.config.lambda_srec * loss_srec + lambda_dis * loss_dis
 
         self.gen_opt.zero_grad()
         loss.backward()
@@ -345,6 +349,8 @@ class Solver(object):
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_rec': loss_rec.item(),
+                'loss_sim': loss_sim.item(),
+                'loss_srec': loss_srec.item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -459,10 +465,13 @@ class Solver(object):
 
             loss_rec = gen_meta['loss_rec']
             loss_dis = gen_meta['loss_dis']
+            loss_sim = gen_meta['loss_sim']
+            loss_srec = gen_meta['loss_srec']
             real_val = dis_meta['real_val']
             fake_val = dis_meta['fake_val']
 
-            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_dis={loss_dis:.2f}, '
+            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_sim={loss_sim:.2f}, '
+                    f'loss_srec={loss_srec:.2f}, loss_dis={loss_dis:.2f}, '
                     f'real_val={real_val:.2f}, fake_val={fake_val:.2f}, lambda={lambda_dis:.1e}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:

@@ -42,7 +42,7 @@ beta2: 0.999
 amsgrad: False
 lambda_rec: 10
 lambda_sim: 0.01
-lambda_srec: 1
+lambda_srec: 0.01
 lambda_la_dis: 0.01
 lambda_dis: 0.1
 lambda_kl: 0.01
@@ -52,7 +52,7 @@ gaussian_std: 0.1
 grad_norm: 1
 ae_steps: 1
 la_dis_steps: 5
-dis_steps: 5
+dis_steps: 1
 la_dis_sched_iters: 10000
 dis_sched_iters: 10000
 sample_rate: 24000
