@@ -193,6 +193,8 @@ class Evaluater(object):
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
         wav_data, _ = self.inference_one_utterance(content, cond)
         self.write_wav_to_file(wav_data, f'{args.output_path}.src2tar.wav')
+        wav_data, _ = self.inference_one_utterance(cond, content)
+        self.write_wav_to_file(wav_data, f'{args.output_path}.tar2src.wav')
         # reconstruction
         wav_data, _ = self.inference_one_utterance(content, content)
         self.write_wav_to_file(wav_data, f'{args.output_path}.rec_src.wav')
