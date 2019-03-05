@@ -40,7 +40,7 @@ class Solver(object):
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
-        torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
+        torch.save(self.ae_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
         torch.save(self.la_discr.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr')
         torch.save(self.la_dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr.opt')
 
@@ -57,7 +57,7 @@ class Solver(object):
         if load_dis:
             self.la_discr.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr'))
         if load_opt:
-            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
+            self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
         if load_dis and load_opt:
             self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr.opt'))
         return
@@ -126,7 +126,10 @@ class Solver(object):
             n_dense_layers=self.config.dis_n_dense_layers, 
             d_h=self.config.dis_d_h, act=self.config.act, sn=True))
         print(self.discr)
-        self.gen_opt = torch.optim.Adam(self.model.parameters(), 
+        self.ae_opt = torch.optim.Adam(self.model.parameters(), 
+                lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
+                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
+        self.gen_opt = torch.optim.Adam(self.model.decoder.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         self.la_dis_opt = torch.optim.Adam(self.la_discr.parameters(), 
@@ -135,6 +138,7 @@ class Solver(object):
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
                 lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
+        print(self.ae_opt)
         print(self.gen_opt)
         print(self.la_dis_opt)
         print(self.dis_opt)
@@ -163,10 +167,10 @@ class Solver(object):
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_kl = torch.mean(enc ** 2)
         loss = self.config.lambda_rec * loss_rec + self.config.lambda_kl * loss_kl
-        self.gen_opt.zero_grad()
+        self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.gen_opt.step()
+        self.ae_opt.step()
         meta = {'loss_rec': loss_rec.item(), 
                 'loss_kl': loss_kl.item(),
                 'grad_norm': grad_norm}
@@ -199,10 +203,10 @@ class Solver(object):
         loss = self.config.lambda_rec * loss_rec + self.config.lambda_sim * loss_sim + lambda_la_dis * loss_dis \
                 + self.config.lambda_kl * loss_kl
 
-        self.gen_opt.zero_grad()
+        self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.gen_opt.step()
+        self.ae_opt.step()
 
         meta = {'loss_rec': loss_rec.item(),
                 'loss_sim': loss_sim.item(),
@@ -323,16 +327,17 @@ class Solver(object):
     def ae_gan_step(self, data, lambda_dis):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
-            enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x), 
+            enc, enc_pos, emb, emb_pos, emb_neg, emb_rec, dec, dec_syn = self.model(self.noise_adder(x), 
                     x_pos=self.noise_adder(x_pos), 
                     x_neg=self.noise_adder(x_neg), 
                     mode='gan_ae')
         else:
-            enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn = self.model(x, 
+            enc, enc_pos, emb, emb_pos, emb_neg, emb_rec, dec, dec_syn = self.model(x, 
                     x_pos=x_pos, 
                     x_neg=x_neg, 
                     mode='gan_ae')
         loss_rec = self.weighted_l1_loss(dec, x)
+        loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
         # input for the discriminator
         fake_vals = self.discr(dec_syn, emb_neg)
         loss_dis = -torch.mean(fake_vals)
@@ -345,6 +350,7 @@ class Solver(object):
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_rec': loss_rec.item(),
+                'loss_srec': loss_srec.item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -458,12 +464,13 @@ class Solver(object):
                         iteration * self.config.dis_steps + dis_step)
 
             loss_rec = gen_meta['loss_rec']
+            loss_srec = gen_meta['loss_srec']
             loss_dis = gen_meta['loss_dis']
             real_val = dis_meta['real_val']
             fake_val = dis_meta['fake_val']
 
-            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_dis={loss_dis:.2f}, '
-                    f'real_val={real_val:.2f}, fake_val={fake_val:.2f}, lambda={lambda_dis:.1e}     ', end='\r')
+            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_srec={loss_srec:.2f}, '
+                    f'loss_dis={loss_dis:.2f}, real_val={real_val:.2f}, fake_val={fake_val:.2f}, lambda={lambda_dis:.1e}     ', end='\r')
 
             if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
                 print()

@@ -393,7 +393,8 @@ class AE(nn.Module):
             dec = self.decoder(enc + noise, emb_pos)
             noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos + noise, emb_neg)
-            return enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn
+            emb_rec = self.static_encoder(dec_syn)
+            return enc, enc_pos, emb, emb_pos, emb_neg, emb_rec, dec, dec_syn
         elif mode == 'latent_dis_pos':
             # dynamic operation
             enc = self.dynamic_encoder(x)

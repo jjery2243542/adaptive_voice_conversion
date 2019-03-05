@@ -214,7 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('--plot_speakers', action='store_true')
     parser.add_argument('-fig_output_path', default='speaker.png')
     parser.add_argument('-spec_output_path', default='spec')
-    parser.add_argument('-n_speakers', default=8, type=int)
+    parser.add_argument('-n_speakers', default=15, type=int)
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
     parser.add_argument('-max_samples', default=3000, type=int)
     parser.add_argument('--infer_default', action='store_true')
