@@ -366,32 +366,21 @@ class AE(nn.Module):
             # decode
             dec = self.decoder(enc + noise, emb_pos)
             return enc, emb_pos, dec
-        elif mode == 'latent_ae':
+        elif mode == 'ae':
             # static operation
             emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
+            emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
-            noise = enc.new(*enc.size()).normal_(0, 1)
             enc_pos = self.dynamic_encoder(x_pos)
             # decode
-            dec = self.decoder(enc + noise, emb_pos)
-            return enc, enc_pos, emb, emb_pos, dec
-        elif mode == 'gan_ae':
-            # fixed encoder
-            with torch.no_grad():
-                # static operation
-                emb = self.static_encoder(x)
-                emb_pos = self.static_encoder(x_pos)
-                emb_neg = self.static_encoder(x_neg)
-                # dynamic operation
-                enc = self.dynamic_encoder(x)
-                enc_pos = self.dynamic_encoder(x_pos)
-            # decode
             noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + noise, emb_pos)
+            # synthesis with emb_neg 
             noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos + noise, emb_neg)
+            dec_syn = self.decoder(enc_pos.detach() + noise, emb_neg.detach())
+            # rec emb
             emb_rec = self.static_encoder(dec_syn)
             return enc, enc_pos, emb, emb_pos, emb_neg, emb_rec, dec, dec_syn
         elif mode == 'latent_dis_pos':
@@ -404,10 +393,7 @@ class AE(nn.Module):
             enc = self.dynamic_encoder(x)
             enc_neg = self.dynamic_encoder(x_neg)
             return enc, enc_neg 
-        elif mode == 'dis_real':
-            emb = self.static_encoder(x)
-            return emb
-        elif mode == 'dis_fake':
+        elif mode == 'dis':
             # dynamic operation
             enc = self.dynamic_encoder(x)
             emb_neg = self.static_encoder(x_neg)
