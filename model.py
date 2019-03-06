@@ -269,13 +269,13 @@ class Decoder(nn.Module):
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
-                [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks)])
+                [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks*2)])
         self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
                 for _ in range(n_dense_blocks)])
         self.dense_affine_layers = nn.ModuleList(
-                [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks)])
+                [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks*2)])
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
 
     def forward(self, x, cond):
@@ -287,29 +287,28 @@ class Decoder(nn.Module):
             y = pad_layer(out, self.first_conv_layers[l])
             y = self.act(y)
             y = self.norm_layer(y)
-            y = append_cond(y, self.conv_affine_layers[l](cond))
-            #y = self.dropout_layer(y)
+            y = append_cond(y, self.conv_affine_layers[l*2](cond))
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             if self.upsample[l] > 1:
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
                 y = self.norm_layer(y)
-                y = append_cond(y, self.conv_affine_layers[l](cond))
+                y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
                 y = self.norm_layer(y)
-                y = append_cond(y, self.conv_affine_layers[l](cond))
+                y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
                 out = y + out
 
         for l in range(self.n_dense_blocks):
             y = self.first_dense_layers[l](y)
             y = self.act(y)
             y = self.norm_layer(y)
-            y = append_cond(y, self.dense_affine_layers[l](cond))
+            y = append_cond(y, self.dense_affine_layers[l*2](cond))
             y = self.second_dense_layers[l](y)
             y = self.act(y)
             y = self.norm_layer(y)
-            y = append_cond(y, self.dense_affine_layers[l](cond))
+            y = append_cond(y, self.dense_affine_layers[l*2+1](cond))
             out = y + out
         out = pad_layer(out, self.out_conv_layer)
         return out

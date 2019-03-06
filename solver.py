@@ -35,14 +35,17 @@ class Solver(object):
         self.save_config()
 
         if args.load_model:
-            self.load_model(args.load_opt, args.load_dis)
+            self.load_model(args.load_opt, args.load_la_dis, args.load_dis)
 
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
         torch.save(self.ae_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
+        torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.gen_opt')
         torch.save(self.la_discr.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr')
         torch.save(self.la_dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr.opt')
+        torch.save(self.discr.state_dict(), f'{self.args.store_model_path}.{stage}.discr')
+        torch.save(self.dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.discr.opt')
 
     def save_config(self):
         with open(f'{self.args.store_model_path}.config.yaml', 'w') as f:
@@ -51,15 +54,20 @@ class Solver(object):
             yaml.dump(vars(self.args), f)
         return
 
-    def load_model(self, load_opt, load_dis):
-        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
+    def load_model(self, load_opt, load_la_dis, load_dis):
+        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_la_dis={load_la_dis}, load_dis={load_dis}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
-        if load_dis:
+        if load_la_dis:
             self.la_discr.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr'))
+        if load_dis:
+            self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
             self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
-        if load_dis and load_opt:
+            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.gen_opt'))
+        if load_la_dis and load_opt:
             self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr.opt'))
+        if load_dis and load_opt:
+            self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
 
     def get_data_loaders(self):
@@ -148,7 +156,7 @@ class Solver(object):
     def weighted_l1_loss(self, dec, x):
         criterion = nn.L1Loss()
         n_priority_freq = int(3000 / (self.config.sample_rate * 0.5) * self.config.c_in)
-        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
+        loss_rec = criterion(dec, x) + criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
         return loss_rec
 
     def ae_pretrain_step(self, data):
