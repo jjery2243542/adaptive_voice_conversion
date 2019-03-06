@@ -366,15 +366,15 @@ class Solver(object):
         for iteration in range(n_iterations):
             data = next(self.train_iter)
             meta = self.ae_pretrain_step(data)
-
             # add to logger
-            self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
+            if iteration % self.args.summary_steps == 0:
+                self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
             loss_rec = meta['loss_rec']
             loss_kl = meta['loss_kl']
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_kl={loss_kl:.2f}     ', 
                     end='\r')
 
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
+            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='ae')
                 print()
         return
@@ -383,7 +383,9 @@ class Solver(object):
         for iteration in range(n_iterations):
             data, data_prime = next(self.train_iter), next(self.train_iter)
             meta = self.dis_latent_step(data, data_prime, lambda_la_dis=1.0)
-            self.logger.scalars_summary(f'{self.args.tag}/la_dis_pretrain', meta, iteration)
+            # add to logger
+            if iteration % self.args.summary_steps == 0:
+                self.logger.scalars_summary(f'{self.args.tag}/la_dis_pretrain', meta, iteration)
 
             loss_pos = meta['loss_pos']
             loss_neg = meta['loss_neg']
@@ -392,7 +394,7 @@ class Solver(object):
             print(f'Ld:[{iteration + 1}/{n_iterations}], loss_pos={loss_pos:.2f}, loss_neg={loss_neg:.2f}, '
                     f'acc={acc:.2f}     ', end='\r')
 
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
+            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='la_dis')
                 print()
         return
@@ -409,15 +411,17 @@ class Solver(object):
                 data = next(self.train_iter)
                 gen_meta = self.ae_latent_step(data, 
                         lambda_la_dis=lambda_la_dis)
-                self.logger.scalars_summary(f'{self.args.tag}/ae_train', gen_meta, 
-                        iteration * self.config.ae_steps + ae_step)
+                # add to logger
+                if iteration % self.args.summary_steps == 0:
+                    self.logger.scalars_summary(f'{self.args.tag}/ae_train', gen_meta, iteration) 
 
             # D step
             for la_dis_step in range(self.config.la_dis_steps):
                 data, data_prime = next(self.train_iter), next(self.train_iter)
                 dis_meta = self.dis_latent_step(data, data_prime, lambda_la_dis=1.0)
-                self.logger.scalars_summary(f'{self.args.tag}/la_dis_train', dis_meta, 
-                        iteration * self.config.la_dis_steps + la_dis_step)
+                # add to logger
+                if iteration % self.args.summary_steps == 0:
+                    self.logger.scalars_summary(f'{self.args.tag}/la_dis_train', dis_meta, iteration) 
 
             loss_rec = gen_meta['loss_rec']
             loss_sim = gen_meta['loss_sim']
@@ -430,7 +434,7 @@ class Solver(object):
                     f'acc={acc:.2f}, lambda={lambda_la_dis:.1e}   ', 
                     end='\r')
 
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
+            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 print()
                 self.save_model(iteration=iteration, stage='latent')
 
@@ -438,14 +442,16 @@ class Solver(object):
         for iteration in range(n_iterations):
             data, data_prime = next(self.train_iter), next(self.train_iter)
             meta = self.dis_step(data, data_prime)
-            self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
+            # add to logger
+            if iteration % self.args.summary_steps == 0:
+                self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
             real_val = meta['real_val']
             fake_val = meta['fake_val']
 
             print(f'D:[{iteration + 1}/{n_iterations}], real_val={real_val:.2f}, fake_val={fake_val:.2f}     ', end='\r')
 
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
+            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='dis')
                 print()
         return
@@ -461,15 +467,17 @@ class Solver(object):
             for ae_step in range(self.config.ae_steps):
                 data = next(self.train_iter)
                 gen_meta = self.ae_gan_step(data, lambda_dis=lambda_dis)
-                self.logger.scalars_summary(f'{self.args.tag}/ae_gan_train', gen_meta, 
-                        iteration * self.config.ae_steps + ae_step)
+                # add to logger
+                if iteration % self.args.summary_steps == 0:
+                    self.logger.scalars_summary(f'{self.args.tag}/ae_gan_train', gen_meta, iteration) 
 
             # D step
             for dis_step in range(self.config.dis_steps):
                 data, data_prime = next(self.train_iter), next(self.train_iter)
                 dis_meta = self.dis_step(data, data_prime)
-                self.logger.scalars_summary(f'{self.args.tag}/dis_train', dis_meta, 
-                        iteration * self.config.dis_steps + dis_step)
+                # add to logger
+                if iteration % self.args.summary_steps == 0:
+                    self.logger.scalars_summary(f'{self.args.tag}/dis_train', dis_meta, iteration) 
 
             loss_rec = gen_meta['loss_rec']
             loss_srec = gen_meta['loss_srec']
@@ -480,6 +488,6 @@ class Solver(object):
             print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_srec={loss_srec:.2f}, '
                     f'loss_dis={loss_dis:.2f}, real_val={real_val:.2f}, fake_val={fake_val:.2f}, lambda={lambda_dis:.1e}     ', end='\r')
 
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
+            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 print()
                 self.save_model(iteration=iteration, stage='gan')
