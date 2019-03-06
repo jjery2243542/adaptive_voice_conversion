@@ -341,7 +341,7 @@ class Solver(object):
         # input for the discriminator
         fake_vals = self.discr(dec_syn, emb_neg)
         loss_dis = -torch.mean(fake_vals)
-        loss = self.config.lambda_rec * loss_rec + lambda_dis * loss_dis
+        loss = self.config.lambda_rec * loss_rec + self.config.lambda_srec * loss_srec + lambda_dis * loss_dis
 
         self.gen_opt.zero_grad()
         loss.backward()
