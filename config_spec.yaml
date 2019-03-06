@@ -8,7 +8,7 @@ kernel_size: 7
 bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
-s_enc_n_dense_blocks: 2
+s_enc_n_dense_blocks: 4
 d_enc_n_conv_blocks: 9
 d_enc_n_dense_blocks: 0
 s_subsample: [1, 2, 1, 2, 1, 2]
@@ -53,6 +53,8 @@ grad_norm: 1
 ae_steps: 1
 la_dis_steps: 3
 dis_steps: 3
+la_dis_steps: 5
+dis_steps: 1
 la_dis_sched_iters: 10000
 dis_sched_iters: 10000
 sample_rate: 24000
