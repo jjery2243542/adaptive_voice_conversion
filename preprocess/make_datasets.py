@@ -34,8 +34,8 @@ def wave_feature_extraction(wav_file, sr):
     return y
 
 def spec_feature_extraction(wav_file):
-    _, mag = get_spectrograms(wav_file)
-    return mag
+    mel, mag = get_spectrograms(wav_file)
+    return mel, mag
 
 def my_std(data, mean):
     square_sum = 0.
@@ -91,21 +91,8 @@ if __name__ == '__main__':
             if i % 500 == 0 or i == len(path_list) - 1:
                 print(f'processing {i} files')
             filename = path.strip().split('/')[-1]
-            wav_data = spec_feature_extraction(path)
-            data[filename] = wav_data
-        #    if dset == 'train':
-        #        all_train_data.append(wav_data)
-        #if dset == 'train':
-        #    all_train_data = np.concatenate(all_train_data)
-        #    mean = all_train_data.mean()
-        #    std = all_train_data.std()
-        #    print(f'mean={mean:.3f}, std={std:.3f}')
-        #    attr = {'mean': float(mean), 'std': float(std)}
-        #    with open(os.path.join(output_dir, 'mean_std.json'), 'w') as f:
-        #        json.dump(attr, f)
-        #for key, value in data.items():
-        #    value = (value - mean) / std
-        #    data[key] = value
+            mel, mag = spec_feature_extraction(path)
+            data[filename] = {'mel': mel, 'mag':mag}
         with open(output_path, 'wb') as f:
             pickle.dump(data, f)
 
