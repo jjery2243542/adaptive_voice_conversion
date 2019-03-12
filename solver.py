@@ -171,18 +171,15 @@ class Solver(object):
                     mode='pretrain_ae')
 
         loss_rec = self.weighted_l1_loss(dec, x)
-        loss_enc_kl = torch.mean(enc ** 2)
-        loss_emb_kl = torch.mean(emb_pos ** 2)
+        loss_kl = torch.mean(enc ** 2)
         loss = lambda_rec * loss_rec + \
-                self.config.lambda_kl * loss_enc_kl + \
-                self.config.lambda_kl * loss_emb_kl
+                self.config.lambda_kl * loss_kl
         self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.ae_opt.step()
         meta = {'loss_rec': loss_rec.item(),
-                'loss_enc_kl': loss_enc_kl.item(),
-                'loss_emb_kl': loss_emb_kl.item(),
+                'loss_kl': loss_kl.item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -201,8 +198,7 @@ class Solver(object):
 
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_sim = torch.mean((emb - emb_pos) ** 2)
-        loss_enc_kl = torch.mean(enc ** 2)
-        loss_emb_kl = torch.mean(emb_pos ** 2)
+        loss_kl = torch.mean(enc ** 2)
 
         vals = self.la_discr(enc, enc_pos)
         halfs_label = vals.new_ones(*vals.size()) * 0.5
@@ -211,8 +207,7 @@ class Solver(object):
 
         loss = self.config.final_lambda_rec * loss_rec + \
                 self.config.lambda_sim * loss_sim + \
-                self.config.lambda_kl * loss_enc_kl + \
-                self.config.lambda_kl * loss_emb_kl + \
+                self.config.lambda_kl * loss_kl + \
                 lambda_la_dis * loss_la_dis
 
         self.ae_opt.zero_grad()
@@ -222,8 +217,7 @@ class Solver(object):
 
         meta = {'loss_rec': loss_rec.item(),
                 'loss_sim': loss_sim.item(),
-                'loss_enc_kl': loss_enc_kl.item(),
-                'loss_emb_kl': loss_emb_kl.item(),
+                'loss_kl': loss_kl.item(),
                 'loss_la_dis': loss_la_dis.item(),
                 'loss': loss.item(), 
                 'grad_norm': grad_norm}
@@ -378,10 +372,10 @@ class Solver(object):
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
             loss_rec = meta['loss_rec']
-            loss_enc_kl = meta['loss_enc_kl']
-            loss_emb_kl = meta['loss_emb_kl']
+            loss_kl = meta['loss_kl']
+
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
-                    f'loss_enc_kl={loss_enc_kl:.2f}, loss_emb_kl={loss_emb_kl:.2f}, '
+                    f'loss_kl={loss_kl:.2f}, '
                     f'lambda={lambda_rec:.1e}     ', 
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:

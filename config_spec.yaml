@@ -5,7 +5,7 @@ c_bank: 128
 c_latent: 128
 c_cond: 256
 kernel_size: 9
-bank_size: 15 
+bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
 s_enc_n_dense_blocks: 4
