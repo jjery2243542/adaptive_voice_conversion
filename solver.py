@@ -41,6 +41,7 @@ class Solver(object):
         # save model and discriminator and their optimizer
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
         torch.save(self.ae_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
+        torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.gen.opt')
         torch.save(self.la_discr.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr')
         torch.save(self.la_dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr.opt')
         torch.save(self.discr.state_dict(), f'{self.args.store_model_path}.{stage}.discr')
@@ -62,6 +63,7 @@ class Solver(object):
             self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
             self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
+            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.gen.opt'))
         if load_la_dis and load_opt:
             self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr.opt'))
         if load_dis and load_opt:
