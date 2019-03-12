@@ -496,10 +496,9 @@ class ProjectionDiscriminator(nn.Module):
         self.act = get_act(act)
         if sn:
             self.in_conv_layer = spectral_norm(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
-            self.first_conv_layers = nn.ModuleList(
-                    [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for _ in range(n_conv_blocks)])
-            self.second_conv_layers = nn.ModuleList(
-                    [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) for _ in range(n_conv_blocks)])
+            self.conv_layers = nn.ModuleList(
+                    [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) \
+                            for _ in range(n_conv_blocks)])
             self.pooling_layer = nn.AdaptiveAvgPool2d(1)
             dense_input_size = input_size
             for _ in range(n_conv_blocks):
@@ -510,9 +509,7 @@ class ProjectionDiscriminator(nn.Module):
             self.cond_linear = spectral_norm(nn.Linear(c_cond, d_h))
         else:
             self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
-            self.first_conv_layers = nn.ModuleList(
-                    [nn.Conv2d(c_h, c_h, kernel_size=kernel_size) for _ in range(n_conv_blocks)])
-            self.second_conv_layers = nn.ModuleList(
+            self.conv_layers = nn.ModuleList(
                     [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
             self.pooling_layer = nn.AdaptiveAvgPool2d(1)
             dense_input_size = input_size
@@ -526,9 +523,7 @@ class ProjectionDiscriminator(nn.Module):
     def conv_blocks(self, inp):
         out = pad_layer_2d(inp, self.in_conv_layer)
         for l in range(self.n_conv_blocks):
-            y = pad_layer_2d(out, self.first_conv_layers[l])
-            y = self.act(y)
-            y = pad_layer_2d(out, self.second_conv_layers[l])
+            y = pad_layer_2d(out, self.conv_layers[l])
             y = self.act(y)
             out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
         out = self.pooling_layer(out)
