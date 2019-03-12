@@ -14,6 +14,7 @@ class NoiseAdder(object):
         noise = tensor.new(*tensor.size()).normal_(self.mean, self.std)
         return tensor + noise
 
+
 def sample_gumbel(size, eps=1e-20):
     u = torch.rand(size)
     sample = -torch.log(-torch.log(u + eps) + eps)

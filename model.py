@@ -1,10 +1,26 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.autograd as ag
 import numpy as np
 from math import ceil
 from functools import reduce
 from torch.nn.utils import spectral_norm
+
+def cal_gradpen(netD, real_data, fake_data, center=0, alpha=None, device='cuda'):
+    if alpha is not None:
+        alpha = torch.tensor(alpha, device=device)  # torch.rand(real_data.size(0), 1, device=device)
+    else:
+        alpha = torch.rand(real_data.size(0), 1, 1, device=device)
+    alpha = alpha.expand(real_data.size())
+    interpolates = alpha * real_data + ((1 - alpha) * fake_data)
+    interpolates.requires_grad_(True)
+    disc_interpolates = netD(interpolates)
+    gradients = ag.grad(outputs=disc_interpolates, inputs=interpolates,
+                        grad_outputs=torch.ones(disc_interpolates.size()).to(device),
+                        create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_penalty = ((gradients.norm(2, dim=1) - center) ** 2).mean()
+    return gradient_penalty
 
 def pad_layer(inp, layer):
     kernel_size = layer.kernel_size[0]
@@ -362,9 +378,10 @@ class AE(nn.Module):
             emb_pos = self.static_encoder(x_pos)
             # dynamic operation
             enc = self.dynamic_encoder(x)
-            noise = enc.new(*enc.size()).normal_(0, 1)
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            s_noise = enc.new(*emb_pos.size()).normal_(0, 1)
             # decode
-            dec = self.decoder(enc + noise, emb_pos)
+            dec = self.decoder(enc + d_noise, emb_pos + s_noise)
             return enc, emb_pos, dec
         elif mode == 'ae':
             # static operation
@@ -375,11 +392,13 @@ class AE(nn.Module):
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
             # decode
-            noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + noise, emb_pos)
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            s_noise = enc.new(*emb_pos.size()).normal_(0, 1)
+            dec = self.decoder(enc + d_noise, emb_pos + s_noise)
             # synthesis with emb_neg 
-            noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos.detach() + noise, emb_neg.detach())
+            d_noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
+            s_noise = emb_neg.new(*emb_neg.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_pos.detach() + d_noise, emb_neg.detach() + s_noise)
             # rec emb
             emb_rec = self.static_encoder(dec_syn)
             return enc, enc_pos, emb, emb_pos, emb_neg, emb_rec, dec, dec_syn
@@ -397,8 +416,9 @@ class AE(nn.Module):
             # dynamic operation
             enc = self.dynamic_encoder(x)
             emb_neg = self.static_encoder(x_neg)
-            noise = enc.new(*enc.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc + noise, emb_neg)
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            s_noise = emb_neg.new(*emb_neg.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc + d_noise, emb_neg + s_noise)
             return enc, emb_neg, dec_syn
 
     def inference(self, x, x_cond):
@@ -412,12 +432,11 @@ class AE(nn.Module):
         return out
 
 class LatentDiscriminator(nn.Module):
-    def __init__(self, input_size, output_size, 
+    def __init__(self, input_size, 
             c_in, c_h, kernel_size, n_conv_layers, 
             n_dense_layers, d_h, act, dropout_rate):
         super(LatentDiscriminator, self).__init__()
         self.input_size = input_size
-        self.output_size = output_size
         self.c_in = c_in
         self.c_h = c_h
         self.kernel_size = kernel_size
@@ -431,7 +450,7 @@ class LatentDiscriminator(nn.Module):
         dense_input_size = int(input_size * (0.5**n_conv_layers) * c_h)
         self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
                 [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
-                [nn.Linear(d_h, output_size)])
+                [nn.Linear(d_h, 1)])
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def conv_blocks(self, inp):
@@ -456,11 +475,11 @@ class LatentDiscriminator(nn.Module):
         x_vec = self.conv_blocks(x)
         x_context_vec = self.conv_blocks(x_context)
         fused = torch.cat([x_vec, x_context_vec], dim=1)
-        val = self.dense_blocks(fused)
+        val = self.dense_blocks(fused).squeeze(dim=1)
         return val
 
 class ProjectionDiscriminator(nn.Module):
-    def __init__(self, input_size, output_size, 
+    def __init__(self, input_size, 
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks, 
             n_dense_layers, d_h, act, sn):
@@ -481,7 +500,7 @@ class ProjectionDiscriminator(nn.Module):
                 dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
             self.dense_layers = nn.ModuleList([spectral_norm(nn.Linear(c_h, d_h))] + 
                     [spectral_norm(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
-                    [spectral_norm(nn.Linear(d_h, output_size))])
+                    [spectral_norm(nn.Linear(d_h, 1))])
             self.cond_linear = spectral_norm(nn.Linear(c_cond, d_h))
         else:
             self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
@@ -495,7 +514,7 @@ class ProjectionDiscriminator(nn.Module):
                 dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
             self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + \
                     [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + \
-                    [nn.Linear(d_h, output_size)])
+                    [nn.Linear(d_h, 1)])
             self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
@@ -525,6 +544,7 @@ class ProjectionDiscriminator(nn.Module):
         out, h = self.dense_blocks(x_vec)
         if cond is not None:
             out += torch.sum(h * self.cond_linear(cond), dim=1, keepdim=True)
+        out = out.squeeze(dim=1)
         return out
 
 if __name__ == '__main__':
