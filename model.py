@@ -24,7 +24,7 @@ def cal_gradpen(netD, real_data, fake_data, center=0, alpha=None, device='cuda')
 
 def compute_grad(d_out, x_in, center=0):
     # add activation sigmoid
-    d_out = torch.sigmoid(d_out)
+    #d_out = torch.sigmoid(d_out)
     gradients = ag.grad(
             outputs=d_out, inputs=x_in, grad_outputs=d_out.new_ones(d_out.size()), 
             create_graph=True, retain_graph=True, only_inputs=True)[0]
