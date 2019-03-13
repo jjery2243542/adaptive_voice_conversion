@@ -244,7 +244,7 @@ class Solver(object):
 
         _, real_h = self.discr(x)
         _, fake_h = self.discr(dec)
-        loss_rec = torch.mean((real_h - fake_h) ** 2)
+        loss_rec = torch.mean(torch.abs(real_h - fake_h))
 
         fake_vals, _ = self.discr(dec_syn)
         criterion = nn.BCEWithLogitsLoss()
