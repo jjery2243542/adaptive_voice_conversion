@@ -432,10 +432,14 @@ class AE(nn.Module):
         elif mode == 'dis':
             # dynamic operation
             enc = self.dynamic_encoder(x)
+            enc_pos = self.dynamic_encoder(x_pos)
+            emb_pos = self.static_encoder(x_pos)
             emb_neg = self.static_encoder(x_neg)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc + d_noise, emb_neg)
-            return enc, emb_neg, dec_syn
+            dec = self.decoder(enc + d_noise, emb_pos)
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc_pos + d_noise, emb_neg)
+            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)
@@ -498,12 +502,13 @@ class ProjectionDiscriminator(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks, 
-            n_dense_layers, d_h, act, sn):
+            n_dense_layers, d_h, act, sn, sim_layer):
         super(ProjectionDiscriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
         self.act = get_act(act)
+        self.sim_layer = sim_layer
         if sn:
             self.in_conv_layer = spectral_norm(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
             self.conv_layers = nn.ModuleList(
@@ -534,10 +539,12 @@ class ProjectionDiscriminator(nn.Module):
         out = pad_layer_2d(inp, self.in_conv_layer)
         for l in range(self.n_conv_blocks):
             y = pad_layer_2d(out, self.conv_layers[l])
+            if l + 1 == self.sim_layer:
+                h = y 
             y = self.act(y)
             out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
         out = out.view(out.size(0), out.size(1)*out.size(2)*out.size(3))
-        return out
+        return out, h
 
     def dense_blocks(self, inp):
         h = inp
@@ -550,12 +557,12 @@ class ProjectionDiscriminator(nn.Module):
     def forward(self, x, cond=None):
         if x.dim() == 3:
             x = x.unsqueeze(1)
-        x_vec = self.conv_blocks(x)
+        x_vec, sim_h = self.conv_blocks(x)
         out, h = self.dense_blocks(x_vec)
         if cond is not None:
             out += torch.sum(h * self.cond_linear(cond), dim=1, keepdim=True)
         out = out.squeeze(dim=1)
-        return out
+        return out, sim_h
 
 if __name__ == '__main__':
     ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 

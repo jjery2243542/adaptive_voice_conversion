@@ -130,7 +130,8 @@ class Solver(object):
             kernel_size=self.config.dis_kernel_size, 
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
-            d_h=self.config.dis_d_h, act=self.config.act, sn=self.config.sn))
+            d_h=self.config.dis_d_h, act=self.config.act, sn=self.config.sn,
+            sim_layer=self.config.sim_layer))
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
@@ -239,15 +240,18 @@ class Solver(object):
                     x_neg, 
                     mode='gen_ae')
 
-        loss_rec = self.weighted_l1_loss(dec, x)
         loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
 
-        fake_vals = self.discr(dec_syn)
+        _, real_h = self.discr(x)
+        _, fake_h = self.discr(dec)
+        loss_rec = torch.mean((real_h - fake_h) ** 2)
+
+        fake_vals, _ = self.discr(dec_syn)
         criterion = nn.BCEWithLogitsLoss()
         ones_label = fake_vals.new_ones(*fake_vals.size())
         loss_dis = criterion(fake_vals, ones_label)
 
-        loss = self.config.final_lambda_rec * loss_rec + \
+        loss = self.config.lambda_lsm_rec * loss_rec + \
                 self.config.lambda_srec * loss_srec + \
                 lambda_dis * loss_dis 
 
@@ -327,36 +331,36 @@ class Solver(object):
 
     def dis_step(self, data_real, data_gen):
         x, _, _ = [cc(tensor) for tensor in data_real]
-        x_prime, _, x_neg = [cc(tensor) for tensor in data_gen]
+        x_prime, x_pos, x_neg = [cc(tensor) for tensor in data_gen]
 
         with torch.no_grad():
             if self.config.add_gaussian:
-                _, _, dec_syn = self.model(self.noise_adder(x_prime), 
-                        x_pos=None, 
+                _, _, _, _, dec, dec_syn = self.model(self.noise_adder(x_prime), 
+                        x_pos=self.noise_adder(x_pos), 
                         x_neg=self.noise_adder(x_neg), 
                         mode='dis')
             else:
-                _, _, dec_syn = self.model(x_prime, 
-                        x_pos=None, 
+                _, _, _, _, dec, dec_syn = self.model(x_prime, 
+                        x_pos=x_pos, 
                         x_neg=x_neg, 
                         mode='dis')
         # for regularization
         x.requires_grad = True
         # input for the discriminator
-        real_vals = self.discr(x)
-        fake_vals = self.discr(dec_syn)
+        real_vals, _ = self.discr(x)
+        rec_fake_vals, _ = self.discr(dec)
+        con_fake_vals, _ = self.discr(dec_syn)
 
         ones_label = real_vals.new_ones(*real_vals.size())
-        zeros_label = fake_vals.new_zeros(*fake_vals.size())
+        zeros_label = rec_fake_vals.new_zeros(*rec_fake_vals.size())
         criterion = nn.BCEWithLogitsLoss()
 
         loss_real = criterion(real_vals, ones_label)
-        loss_fake = criterion(fake_vals, zeros_label)
-        #loss_real = -torch.mean(real_vals)
-        #loss_fake = torch.mean(fake_vals)
-        #loss_gp = cal_gradpen(self.discr, x, dec_syn)
+        loss_rec_fake = criterion(rec_fake_vals, zeros_label)
+        loss_con_fake = criterion(con_fake_vals, zeros_label)
+
         loss_gp = compute_grad(real_vals, x)
-        loss_dis = loss_real + loss_fake
+        loss_dis = loss_real + (loss_rec_fake + loss_con_fake) / 2
         loss = loss_dis + self.config.lambda_gp * loss_gp
 
         self.dis_opt.zero_grad()
@@ -365,20 +369,25 @@ class Solver(object):
         self.dis_opt.step()
 
         real_probs = torch.sigmoid(real_vals)
-        fake_probs = torch.sigmoid(fake_vals)
+        rec_fake_probs = torch.sigmoid(rec_fake_vals)
+        con_fake_probs = torch.sigmoid(con_fake_vals)
 
         acc_real = torch.mean((real_probs >= 0.5).float())
-        acc_fake = torch.mean((fake_probs < 0.5).float())
-        acc = (acc_real + acc_fake) / 2
+        acc_rec_fake = torch.mean((rec_fake_probs < 0.5).float())
+        acc_con_fake = torch.mean((con_fake_probs < 0.5).float())
+        acc = (acc_real + acc_rec_fake + acc_con_fake) / 3
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
-                'loss_fake': loss_fake.item(),
+                'loss_rec_fake': loss_rec_fake.item(),
+                'loss_con_fake': loss_con_fake.item(),
                 'loss_gp': loss_gp.item(),
                 'real_prob': torch.mean(real_probs).item(),
-                'fake_prob': torch.mean(fake_probs).item(),
+                'rec_fake_prob': torch.mean(rec_fake_probs).item(),
+                'con_fake_prob': torch.mean(con_fake_probs).item(),
                 'acc_real': acc_real.item(),
-                'acc_fake': acc_fake.item(),
+                'acc_rec_fake': acc_rec_fake.item(),
+                'acc_con_fake': acc_con_fake.item(),
                 'acc': acc.item(), 
                 'grad_norm': grad_norm}
         return meta
@@ -504,7 +513,7 @@ class Solver(object):
                 self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
             real_prob = meta['real_prob']
-            fake_prob = meta['fake_prob']
+            fake_prob = meta['con_fake_prob']
             gp = meta['loss_gp']
 
             print(f'D:[{iteration + 1}/{n_iterations}], '
