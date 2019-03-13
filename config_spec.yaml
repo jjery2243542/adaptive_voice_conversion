@@ -24,12 +24,12 @@ la_dis_kernel_size: 3
 la_dis_n_conv_layers: 3
 la_dis_d_h: 512
 la_dis_n_dense_layers: 3
-la_dis_dropout_rate: 0.5
+la_dis_dropout_rate: 0.3
 dis_c_h: 128
 dis_kernel_size: 5
 dis_n_conv_blocks: 5
 dis_n_dense_layers: 3
-dis_d_h: 512
+dis_d_h: 1024
 segment_size: 128
 frame_size: 1
 batch_size: 8

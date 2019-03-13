@@ -499,11 +499,11 @@ class ProjectionDiscriminator(nn.Module):
             self.conv_layers = nn.ModuleList(
                     [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) \
                             for _ in range(n_conv_blocks)])
-            self.pooling_layer = nn.AdaptiveAvgPool2d(1)
-            dense_input_size = input_size
+            dense_input_size = input_size 
             for _ in range(n_conv_blocks):
                 dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-            self.dense_layers = nn.ModuleList([spectral_norm(nn.Linear(c_h, d_h))] + 
+            dense_input_size = dense_input_size[0] * dense_input_size[1] * c_h
+            self.dense_layers = nn.ModuleList([spectral_norm(nn.Linear(dense_input_size, d_h))] + 
                     [spectral_norm(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
                     [spectral_norm(nn.Linear(d_h, 1))])
             self.cond_linear = spectral_norm(nn.Linear(c_cond, d_h))
@@ -511,11 +511,11 @@ class ProjectionDiscriminator(nn.Module):
             self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
             self.conv_layers = nn.ModuleList(
                     [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
-            self.pooling_layer = nn.AdaptiveAvgPool2d(1)
             dense_input_size = input_size
             for _ in range(n_conv_blocks):
                 dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-            self.dense_layers = nn.ModuleList([nn.Linear(c_h, d_h)] + \
+            dense_input_size = dense_input_size[0] * dense_input_size[1] * c_h
+            self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size, d_h)] + \
                     [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + \
                     [nn.Linear(d_h, 1)])
             self.cond_linear = nn.Linear(c_cond, d_h)
@@ -526,8 +526,7 @@ class ProjectionDiscriminator(nn.Module):
             y = pad_layer_2d(out, self.conv_layers[l])
             y = self.act(y)
             out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
-        out = self.pooling_layer(out)
-        out = out.squeeze(2).squeeze(2)
+        out = out.view(out.size(0), out.size(1)*out.size(2)*out.size(3))
         return out
 
     def dense_blocks(self, inp):
