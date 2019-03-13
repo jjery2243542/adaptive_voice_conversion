@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, LatentDiscriminator, ProjectionDiscriminator, cal_gradpen
+from model import AE, LatentDiscriminator, ProjectionDiscriminator, cal_gradpen, compute_grad
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -130,7 +130,7 @@ class Solver(object):
             kernel_size=self.config.dis_kernel_size, 
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
-            d_h=self.config.dis_d_h, act=self.config.act, sn=False))
+            d_h=self.config.dis_d_h, act=self.config.act, sn=self.config.sn))
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
@@ -334,13 +334,22 @@ class Solver(object):
                         x_pos=None, 
                         x_neg=x_neg, 
                         mode='dis')
-
+        # for regularization
+        x.requires_grad = True
         # input for the discriminator
         real_vals = self.discr(x)
         fake_vals = self.discr(dec_syn)
-        loss_real = -torch.mean(real_vals)
-        loss_fake = torch.mean(fake_vals)
-        loss_gp = cal_gradpen(self.discr, x, dec_syn)
+
+        ones_label = real_vals.new_ones(*real_vals.size())
+        zeros_label = fake_vals.new_zeros(*fake_vals.size())
+        criterion = nn.BCEWithLogitsLoss()
+
+        loss_real = criterion(real_vals, ones_label)
+        loss_fake = criterion(fake_vals, zeros_label)
+        #loss_real = -torch.mean(real_vals)
+        #loss_fake = torch.mean(fake_vals)
+        #loss_gp = cal_gradpen(self.discr, x, dec_syn)
+        loss_gp = compute_grad(real_vals, x)
         loss_dis = loss_real + loss_fake
         loss = loss_dis + self.config.lambda_gp * loss_gp
 
@@ -349,12 +358,22 @@ class Solver(object):
         grad_norm = torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
         self.dis_opt.step()
 
+        real_probs = torch.sigmoid(real_vals)
+        fake_probs = torch.sigmoid(fake_vals)
+
+        acc_real = torch.mean((real_probs >= 0.5).float())
+        acc_fake = torch.mean((fake_probs < 0.5).float())
+        acc = (acc_real + acc_fake) / 2
+
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
                 'loss_fake': loss_fake.item(),
                 'loss_gp': loss_gp.item(),
-                'real_val': torch.mean(real_vals).item(),
-                'fake_val': torch.mean(fake_vals).item(),
+                'real_prob': torch.mean(real_probs).item(),
+                'fake_prob': torch.mean(fake_probs).item(),
+                'acc_real': acc_real.item(),
+                'acc_fake': acc_fake.item(),
+                'acc': acc.item(), 
                 'grad_norm': grad_norm}
         return meta
 
@@ -476,12 +495,12 @@ class Solver(object):
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
-            real_val = meta['real_val']
-            fake_val = meta['fake_val']
+            real_prob = meta['real_prob']
+            fake_prob = meta['fake_prob']
             gp = meta['loss_gp']
 
             print(f'D:[{iteration + 1}/{n_iterations}], '
-                    f'real_val={real_val:.2f}, fake_val={fake_val:.2f}, gp={gp:.2f}     ', end='\r')
+                    f'real_prob={real_prob:.2f}, fake_prob={fake_prob:.2f}, gp={gp:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='dis')

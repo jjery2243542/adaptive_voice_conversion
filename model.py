@@ -22,6 +22,15 @@ def cal_gradpen(netD, real_data, fake_data, center=0, alpha=None, device='cuda')
     gradient_penalty = ((gradients.norm(2, dim=1) - center) ** 2).mean()
     return gradient_penalty
 
+def compute_grad(d_out, x_in, center=0):
+    # add activation sigmoid
+    d_out = torch.sigmoid(d_out)
+    gradients = ag.grad(
+            outputs=d_out, inputs=x_in, grad_outputs=d_out.new_ones(d_out.size()), 
+            create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_penalty = ((gradients.norm(2, dim=1) - center) ** 2).mean()
+    return gradient_penalty
+
 def pad_layer(inp, layer):
     kernel_size = layer.kernel_size[0]
     if kernel_size % 2 == 0:
