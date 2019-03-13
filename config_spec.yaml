@@ -4,7 +4,7 @@ d_c_h: 256
 c_bank: 128
 c_latent: 128
 c_cond: 256
-kernel_size: 9
+kernel_size: 7
 bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
