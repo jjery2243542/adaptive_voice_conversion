@@ -238,8 +238,11 @@ class Solver(object):
 
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
+
         fake_vals = self.discr(dec_syn)
-        loss_dis = -torch.mean(fake_vals)
+        criterion = nn.BCEWithLogitsLoss()
+        ones_label = fake_vals.new_ones(*fake_vals.size())
+        loss_dis = criterion(fake_vals, ones_label)
 
         loss = self.config.final_lambda_rec * loss_rec + \
                 self.config.lambda_srec * loss_srec + \

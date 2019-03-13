@@ -59,4 +59,4 @@ la_dis_sched_iters: 10000
 dis_sched_iters: 10000
 rec_sched_iters: 30000
 sample_rate: 22050
-sn: True
+sn: False
