@@ -160,26 +160,29 @@ class Solver(object):
     def ae_pretrain_step(self, data, lambda_rec):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
-            enc, emb_pos, dec = self.model(self.noise_adder(x), 
+            enc, emb, emb_pos, dec = self.model(self.noise_adder(x), 
                     self.noise_adder(x_pos), 
                     self.noise_adder(x_neg), 
                     mode='pretrain_ae')
         else:
-            enc, emb_pos, dec = self.model(x, 
+            enc, emb, emb_pos, dec = self.model(x, 
                     x_pos, 
                     x_neg,
                     mode='pretrain_ae')
 
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_kl = torch.mean(enc ** 2)
+        loss_sim = torch.mean((emb - emb_pos) ** 2)
         loss = lambda_rec * loss_rec + \
-                self.config.lambda_kl * loss_kl
+                self.config.lambda_kl * loss_kl + \
+                self.config.lambda_sim * loss_sim
         self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.ae_opt.step()
         meta = {'loss_rec': loss_rec.item(),
                 'loss_kl': loss_kl.item(),
+                'loss_sim': loss_sim.item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -394,10 +397,12 @@ class Solver(object):
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
             loss_rec = meta['loss_rec']
+            loss_sim = meta['loss_sim']
             loss_kl = meta['loss_kl']
 
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
                     f'loss_kl={loss_kl:.2f}, '
+                    f'loss_sim={loss_sim:.2f}, '
                     f'lambda={lambda_rec:.1e}     ', 
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
