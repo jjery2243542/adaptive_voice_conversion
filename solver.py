@@ -217,10 +217,10 @@ class Solver(object):
                 self.config.lambda_srec * loss_srec + \
                 lambda_dis * loss_dis 
 
-        self.ae_opt.zero_grad()
+        self.gen_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.ae_opt.step()
+        self.gen_opt.step()
 
         meta = {'loss_rec': loss_rec.item(),
                 'loss_srec': loss_srec.item(),
