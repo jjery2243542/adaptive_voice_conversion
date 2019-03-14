@@ -408,18 +408,20 @@ class AE(nn.Module):
             # rec emb
             emb_rec = self.static_encoder(dec_syn)
             return enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn
-        elif mode == 'dis':
+        elif mode == 'dis_fake':
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
-            emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
             emb_neg = self.static_encoder(x_neg)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + d_noise, emb_pos)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos + d_noise, emb_neg)
-            return enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn
+            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
+        elif mode == 'dis_real':
+            emb = self.static_encoder(x)
+            return emb
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)

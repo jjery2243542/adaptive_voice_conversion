@@ -235,15 +235,17 @@ class Solver(object):
 
         with torch.no_grad():
             if self.config.add_gaussian:
-                _, _, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x_prime), 
+                emb = self.model(self.noise_adder(x), x_pos=None, x_neg=None, mode='dis_real')
+                _, _, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x_prime), 
                         x_pos=self.noise_adder(x_pos), 
                         x_neg=self.noise_adder(x_neg), 
-                        mode='dis')
+                        mode='dis_fake')
             else:
-                _, _, emb, emb_pos, emb_neg, dec, dec_syn = self.model(x_prime, 
+                emb = self.model(x, x_pos=None, x_neg=None, mode='dis_real')
+                _, _, emb_pos, emb_neg, dec, dec_syn = self.model(x_prime, 
                         x_pos=x_pos, 
                         x_neg=x_neg, 
-                        mode='dis')
+                        mode='dis_fake')
         # for R1 regularization
         x.requires_grad = True
         # input for the discriminator
