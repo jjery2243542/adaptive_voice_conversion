@@ -392,17 +392,6 @@ class AE(nn.Module):
             # decode
             dec = self.decoder(enc + d_noise, emb_pos)
             return enc, emb, emb_pos, dec
-        elif mode == 'latent_ae':
-            # static operation
-            emb = self.static_encoder(x)
-            emb_pos = self.static_encoder(x_pos)
-            # dynamic operation
-            enc = self.dynamic_encoder(x)
-            enc_pos = self.dynamic_encoder(x_pos)
-            # decode
-            d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + d_noise, emb_pos)
-            return enc, enc_pos, emb, emb_pos, dec
         elif mode == 'gen_ae':
             with torch.no_grad():
                 emb_pos = self.static_encoder(x_pos)
@@ -419,27 +408,18 @@ class AE(nn.Module):
             # rec emb
             emb_rec = self.static_encoder(dec_syn)
             return enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn
-        elif mode == 'latent_dis_pos':
-            # dynamic operation
-            enc = self.dynamic_encoder(x)
-            enc_pos = self.dynamic_encoder(x_pos)
-            return enc, enc_pos 
-        elif mode == 'latent_dis_neg':
-            # dynamic operation
-            enc = self.dynamic_encoder(x)
-            enc_neg = self.dynamic_encoder(x_neg)
-            return enc, enc_neg 
         elif mode == 'dis':
             # dynamic operation
             enc = self.dynamic_encoder(x)
             enc_pos = self.dynamic_encoder(x_pos)
+            emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
             emb_neg = self.static_encoder(x_neg)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + d_noise, emb_pos)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos + d_noise, emb_neg)
-            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
+            return enc, enc_pos, emb, emb_pos, emb_neg, dec, dec_syn
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)

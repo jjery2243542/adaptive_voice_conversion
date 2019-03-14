@@ -42,7 +42,7 @@ beta2: 0.9
 amsgrad: False
 init_lambda_rec: 10
 final_lambda_rec: 10
-lambda_lsm_rec: 1
+lambda_lsm_rec: 10
 lambda_sim: 0.01
 lambda_srec: 1
 lambda_la_dis: 0.01
@@ -60,5 +60,6 @@ la_dis_sched_iters: 10000
 dis_sched_iters: 10000
 rec_sched_iters: 30000
 sample_rate: 22050
-sn: False
+sn: True
 sim_layer: 3
+one_side_ls_weight: 0.9

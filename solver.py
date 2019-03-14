@@ -187,46 +187,6 @@ class Solver(object):
                 'grad_norm': grad_norm}
         return meta
 
-    def ae_latent_step(self, data, lambda_la_dis):
-        x, x_pos, x_neg = [cc(tensor) for tensor in data]
-        if self.config.add_gaussian:
-            enc, enc_pos, emb, emb_pos, dec = self.model(self.noise_adder(x), 
-                    self.noise_adder(x_pos), 
-                    self.noise_adder(x_neg),
-                    mode='latent_ae')
-        else:
-            enc, enc_pos, emb, emb_pos, dec = self.model(x, 
-                    x_pos, 
-                    x_neg, 
-                    mode='latent_ae')
-
-        loss_rec = self.weighted_l1_loss(dec, x)
-        loss_sim = torch.mean((emb - emb_pos) ** 2)
-        loss_kl = torch.mean(enc ** 2)
-
-        vals = self.la_discr(enc, enc_pos)
-        halfs_label = vals.new_ones(*vals.size()) * 0.5
-        criterion = nn.BCEWithLogitsLoss()
-        loss_la_dis = criterion(vals, halfs_label)
-
-        loss = self.config.final_lambda_rec * loss_rec + \
-                self.config.lambda_sim * loss_sim + \
-                self.config.lambda_kl * loss_kl + \
-                lambda_la_dis * loss_la_dis
-
-        self.ae_opt.zero_grad()
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.ae_opt.step()
-
-        meta = {'loss_rec': loss_rec.item(),
-                'loss_sim': loss_sim.item(),
-                'loss_kl': loss_kl.item(),
-                'loss_la_dis': loss_la_dis.item(),
-                'loss': loss.item(), 
-                'grad_norm': grad_norm}
-        return meta
-
     def ae_gen_step(self, data, lambda_dis):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
@@ -245,13 +205,15 @@ class Solver(object):
         _, real_h = self.discr(x)
         _, fake_h = self.discr(dec)
         loss_rec = torch.mean(torch.abs(real_h - fake_h))
+        loss_kl = torch.mean(enc ** 2)
 
-        fake_vals, _ = self.discr(dec_syn)
+        fake_vals, _ = self.discr(dec_syn, emb_neg.detach())
         criterion = nn.BCEWithLogitsLoss()
         ones_label = fake_vals.new_ones(*fake_vals.size())
         loss_dis = criterion(fake_vals, ones_label)
 
         loss = self.config.lambda_lsm_rec * loss_rec + \
+                self.config.lambda_kl * loss_kl + \
                 self.config.lambda_srec * loss_srec + \
                 lambda_dis * loss_dis 
 
@@ -267,91 +229,29 @@ class Solver(object):
                 'grad_norm': grad_norm}
         return meta
 
-    def dis_latent_step(self, data_pos, data_neg):
-        x, x_pos, _ = [cc(tensor) for tensor in data_pos]
-        x_prime, _, x_neg = [cc(tensor) for tensor in data_neg]
-
-        with torch.no_grad():
-            if self.config.add_gaussian:
-                enc, enc_pos = self.model(self.noise_adder(x), 
-                        x_pos=self.noise_adder(x_pos), 
-                        x_neg=None, 
-                        mode='latent_dis_pos')
-                enc_prime, enc_neg = self.model(self.noise_adder(x_prime), 
-                        x_pos=None, 
-                        x_neg=self.noise_adder(x_neg), 
-                        mode='latent_dis_neg')
-            else:
-                enc, enc_pos = self.model(x, 
-                        x_pos=x_pos, 
-                        x_neg=None, 
-                        mode='latent_dis_pos')
-                enc_prime, enc_neg = self.model(x_prime, 
-                        x_pos=None, 
-                        x_neg=x_neg, 
-                        mode='latent_dis_neg')
-
-        # input for the discriminator
-        pos_vals = self.la_discr(enc, enc_pos)
-        neg_vals = self.la_discr(enc_prime, enc_neg)
-
-        ones_label = pos_vals.new_ones(*pos_vals.size())
-        zeros_label = neg_vals.new_zeros(*neg_vals.size())
-
-        criterion = nn.BCEWithLogitsLoss()
-
-        loss_pos = criterion(pos_vals, ones_label)
-        loss_neg = criterion(neg_vals, zeros_label)
-
-        loss_dis = loss_pos + loss_neg
-        loss = loss_dis
-
-        self.la_dis_opt.zero_grad()
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.la_discr.parameters(), max_norm=self.config.grad_norm)
-        self.la_dis_opt.step()
-
-        pos_probs = torch.sigmoid(pos_vals)
-        neg_probs = torch.sigmoid(neg_vals)
-
-        acc_pos = torch.mean((pos_probs >= 0.5).float())
-        acc_neg = torch.mean((neg_probs < 0.5).float())
-        acc = (acc_pos + acc_neg) / 2
-
-        meta = {'loss_dis': loss_dis.item(),
-                'loss_pos': loss_pos.item(),
-                'loss_neg': loss_neg.item(),
-                'pos_prob': torch.mean(pos_probs).item(),
-                'neg_prob': torch.mean(neg_probs).item(),
-                'acc_pos': acc_pos.item(),
-                'acc_neg': acc_neg.item(),
-                'acc': acc.item(), 
-                'grad_norm': grad_norm}
-        return meta
-
     def dis_step(self, data_real, data_gen):
         x, _, _ = [cc(tensor) for tensor in data_real]
         x_prime, x_pos, x_neg = [cc(tensor) for tensor in data_gen]
 
         with torch.no_grad():
             if self.config.add_gaussian:
-                _, _, _, _, dec, dec_syn = self.model(self.noise_adder(x_prime), 
+                _, _, emb, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x_prime), 
                         x_pos=self.noise_adder(x_pos), 
                         x_neg=self.noise_adder(x_neg), 
                         mode='dis')
             else:
-                _, _, _, _, dec, dec_syn = self.model(x_prime, 
+                _, _, emb, emb_pos, emb_neg, dec, dec_syn = self.model(x_prime, 
                         x_pos=x_pos, 
                         x_neg=x_neg, 
                         mode='dis')
-        # for regularization
+        # for R1 regularization
         x.requires_grad = True
         # input for the discriminator
-        real_vals, _ = self.discr(x)
-        rec_fake_vals, _ = self.discr(dec)
-        con_fake_vals, _ = self.discr(dec_syn)
+        real_vals, _ = self.discr(x, emb)
+        rec_fake_vals, _ = self.discr(dec, emb_pos)
+        con_fake_vals, _ = self.discr(dec_syn, emb_neg)
 
-        ones_label = real_vals.new_ones(*real_vals.size())
+        ones_label = real_vals.new_ones(*real_vals.size()) * self.config.one_side_ls_weight 
         zeros_label = rec_fake_vals.new_zeros(*rec_fake_vals.size())
         criterion = nn.BCEWithLogitsLoss()
 
@@ -418,56 +318,6 @@ class Solver(object):
                 self.save_model(iteration=iteration, stage='ae')
                 print()
         return
-
-    def dis_latent_pretrain(self, n_iterations):
-        for iteration in range(n_iterations):
-            data, data_prime = next(self.train_iter), next(self.train_iter)
-            meta = self.dis_latent_step(data, data_prime)
-            # add to logger
-            if iteration % self.args.summary_steps == 0:
-                self.logger.scalars_summary(f'{self.args.tag}/la_dis_pretrain', meta, iteration)
-            loss_pos = meta['loss_pos']
-            loss_neg = meta['loss_neg']
-            acc = meta['acc']
-            print(f'Ld:[{iteration + 1}/{n_iterations}], loss_pos={loss_pos:.2f}, loss_neg={loss_neg:.2f}, '
-                    f'acc={acc:.2f}     ', end='\r')
-            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
-                self.save_model(iteration=iteration, stage='la_dis')
-                print()
-        return
-
-    def ae_latent_train(self, n_iterations):
-        for iteration in range(n_iterations):
-            # calculate linear increasing lambda
-            if iteration >= self.config.la_dis_sched_iters:
-                lambda_la_dis = self.config.lambda_la_dis
-            else:
-                lambda_la_dis = self.config.lambda_la_dis * (iteration + 1) / self.config.la_dis_sched_iters
-            # AE step
-            for ae_step in range(self.config.ae_steps):
-                data = next(self.train_iter)
-                gen_meta = self.ae_latent_step(data, lambda_la_dis=lambda_la_dis)
-                # add to logger
-                if iteration % self.args.summary_steps == 0:
-                    self.logger.scalars_summary(f'{self.args.tag}/ae_latent_train', gen_meta, iteration) 
-            # latent D step
-            for la_dis_step in range(self.config.la_dis_steps):
-                data, data_prime = next(self.train_iter), next(self.train_iter)
-                la_dis_meta = self.dis_latent_step(data, data_prime)
-                # add to logger
-                if iteration % self.args.summary_steps == 0:
-                    self.logger.scalars_summary(f'{self.args.tag}/la_dis_train', la_dis_meta, iteration) 
-            loss_rec = gen_meta['loss_rec']
-            loss_sim = gen_meta['loss_sim']
-            loss_la_dis = gen_meta['loss_la_dis']
-            print(f'L:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
-                    f'loss_sim={loss_sim:.2f}, '
-                    f'loss_la_dis={loss_la_dis:.2f}, '
-                    f'lambda={lambda_la_dis:.1e}     ', 
-                    end='\r')
-            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
-                print()
-                self.save_model(iteration=iteration, stage='latent')
 
     def ae_gen_train(self, n_iterations):
         for iteration in range(n_iterations):
