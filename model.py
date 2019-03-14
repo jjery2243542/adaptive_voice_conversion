@@ -518,7 +518,7 @@ class ProjectionDiscriminator(nn.Module):
             self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
-        out = pad_layer_2d(inp, self.in_conv_layer)
+        out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
             y = pad_layer_2d(out, self.conv_layers[l])
             if l + 1 == self.sim_layer:
