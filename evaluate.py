@@ -13,6 +13,7 @@ from utils import *
 from functools import reduce
 import json
 from collections import defaultdict
+from data_utils import SequenceDataset
 from torch.utils.data import Dataset
 from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
@@ -123,22 +124,16 @@ class Evaluater(object):
         return
 
     def plot_static_embeddings(self, output_path):
-        # filter the samples by speakers sampled
-        # hack code 
-        small_indexes = [index for index in self.indexes if index[0][:len('p000')] in self.sampled_speakers]
-        random.shuffle(small_indexes)
-        small_indexes = small_indexes[:self.args.max_samples]
-        # generate the tensor and dataloader for evaluation
-        tensor = [self.pkl_data[key][t:t + self.config.segment_size] for key, t, _, _, _ in small_indexes]
-        speakers = [key[:len('p000')] for key, _, _, _, _  in small_indexes]
-        # add the dimension for channel
-        tensor = self.seg_make_frames(torch.from_numpy(np.array(tensor)))
-        dataset = TensorDataset(tensor)
-        dataloader = DataLoader(dataset, batch_size=20, shuffle=False, num_workers=0)
+        # hack code
+        small_pkl_data = {key: val for key, val in self.pkl_data.items() \
+                if key[:len('p000')] in self.sampled_speakers and val.shape[0] > 128}
+        speakers = [key[:len('p000')] for key in small_pkl_data.keys()]
+        dataset = SequenceDataset(small_pkl_data)
+        dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
         all_embs = []
         # run the model 
         for data in dataloader:
-            data = cc(data[0])
+            data = cc(data)
             embs = self.model.get_static_embeddings(data)
             all_embs = all_embs + embs.detach().cpu().numpy().tolist()
         all_embs = np.array(all_embs)
@@ -157,6 +152,42 @@ class Evaluater(object):
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
         return
+
+    #def plot_static_embeddings(self, output_path):
+    #    # filter the samples by speakers sampled
+    #    # hack code 
+    #    small_indexes = [index for index in self.indexes if index[0][:len('p000')] in self.sampled_speakers]
+    #    random.shuffle(small_indexes)
+    #    small_indexes = small_indexes[:self.args.max_samples]
+    #    # generate the tensor and dataloader for evaluation
+    #    tensor = [self.pkl_data[key][t:t + self.config.segment_size] for key, t, _, _, _ in small_indexes]
+    #    speakers = [key[:len('p000')] for key, _, _, _, _  in small_indexes]
+    #    # add the dimension for channel
+    #    tensor = self.seg_make_frames(torch.from_numpy(np.array(tensor)))
+    #    dataset = TensorDataset(tensor)
+    #    dataloader = DataLoader(dataset, batch_size=20, shuffle=False, num_workers=0)
+    #    all_embs = []
+    #    # run the model 
+    #    for data in dataloader:
+    #        data = cc(data[0])
+    #        embs = self.model.get_static_embeddings(data)
+    #        all_embs = all_embs + embs.detach().cpu().numpy().tolist()
+    #    all_embs = np.array(all_embs)
+    #    print(all_embs.shape)
+    #    # TSNE
+    #    embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
+    #    x_min, x_max = embs_2d.min(0), embs_2d.max(0)
+    #    embs_norm = (embs_2d - x_min) / (x_max - x_min)
+    #    # plot to figure
+    #    female_cluster = [i for i, speaker in enumerate(speakers) if self.speaker2gender[speaker] == 'F']
+    #    male_cluster = [i for i, speaker in enumerate(speakers) if self.speaker2gender[speaker] == 'M']
+    #    colors = np.array([self.speaker_index[speaker] for speaker in speakers])
+    #    plt.scatter(embs_norm[female_cluster, 0], embs_norm[female_cluster, 1], 
+    #            c=colors[female_cluster], marker='x') 
+    #    plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
+    #            c=colors[male_cluster], marker='o') 
+    #    plt.savefig(output_path)
+    #    return
 
     def utt_make_frames(self, x):
         remains = x.size(0) % self.config.frame_size
