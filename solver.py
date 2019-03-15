@@ -155,7 +155,7 @@ class Solver(object):
     def weighted_l1_loss(self, dec, x):
         criterion = nn.L1Loss()
         n_priority_freq = int(3000 / (self.config.sample_rate * 0.5) * self.config.c_in)
-        loss_rec = criterion(dec, x) + criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
+        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
         return loss_rec
 
     def ae_pretrain_step(self, data, lambda_rec):
@@ -200,7 +200,7 @@ class Solver(object):
                     x_neg, 
                     mode='gen_ae')
 
-        loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
+        loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
 
         _, real_h = self.discr(x)
         _, fake_h = self.discr(dec)
