@@ -394,14 +394,14 @@ class AE(nn.Module):
             return enc, emb, emb_pos, dec
         elif mode == 'gen_ae':
             with torch.no_grad():
-                emb_pos = self.static_encoder(x_pos)
                 emb_neg = self.static_encoder(x_neg)
                 # dynamic operation
-                enc = self.dynamic_encoder(x)
                 enc_pos = self.dynamic_encoder(x_pos)
+            emb_pos = self.static_encoder(x_pos)
+            enc = self.dynamic_encoder(x)
             # decode
             d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + d_noise, emb_pos)
+            dec = self.decoder(enc + d_noise, emb_pos.detach())
             # synthesis with emb_neg 
             d_noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos.detach() + d_noise, emb_neg.detach())

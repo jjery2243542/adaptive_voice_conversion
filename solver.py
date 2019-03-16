@@ -42,8 +42,6 @@ class Solver(object):
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
         torch.save(self.ae_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
         torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.gen.opt')
-        torch.save(self.la_discr.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr')
-        torch.save(self.la_dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.la_discr.opt')
         torch.save(self.discr.state_dict(), f'{self.args.store_model_path}.{stage}.discr')
         torch.save(self.dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.discr.opt')
 
@@ -54,18 +52,14 @@ class Solver(object):
             yaml.dump(vars(self.args), f)
         return
 
-    def load_model(self, load_opt, load_la_dis, load_dis):
-        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_la_dis={load_la_dis}, load_dis={load_dis}')
+    def load_model(self, load_opt, load_dis):
+        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
-        if load_la_dis:
-            self.la_discr.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr'))
         if load_dis:
             self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
             self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
             self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.gen.opt'))
-        if load_la_dis and load_opt:
-            self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.la_discr.opt'))
         if load_dis and load_opt:
             self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
@@ -110,18 +104,6 @@ class Solver(object):
                 act=self.config.act,
                 dropout_rate=self.config.dropout_rate))
         print(self.model)
-        discr_input_size = self.config.segment_size // \
-                (reduce(lambda x, y: x*y, self.config.d_subsample) * self.config.frame_size)
-        self.la_discr = cc(LatentDiscriminator(input_size=discr_input_size,
-                c_in=self.config.c_latent,
-                c_h=self.config.la_dis_c_h,
-                kernel_size=self.config.la_dis_kernel_size,
-                n_conv_layers=self.config.la_dis_n_conv_layers,
-                n_dense_layers=self.config.la_dis_n_dense_layers,
-                d_h=self.config.la_dis_d_h, 
-                act=self.config.act, 
-                dropout_rate=self.config.la_dis_dropout_rate))
-        print(self.la_discr)
         self.discr = cc(ProjectionDiscriminator(
             input_size=(self.config.c_in, self.config.segment_size),
             c_in=1, 
@@ -135,19 +117,16 @@ class Solver(object):
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
-        self.gen_opt = torch.optim.Adam(self.model.decoder.parameters(), 
+                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay) 
+        params = list(self.model.dynamic_encoder.parameters()) + list(self.model.decoder.parameters())
+        self.gen_opt = torch.optim.Adam(params, 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
-        self.la_dis_opt = torch.optim.Adam(self.la_discr.parameters(), 
-                lr=self.config.la_dis_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
                 lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         print(self.ae_opt)
         print(self.gen_opt)
-        print(self.la_dis_opt)
         print(self.dis_opt)
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
         return
