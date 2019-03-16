@@ -46,7 +46,7 @@ lambda_lsm_rec: 10
 lambda_sim: 0
 lambda_srec: 1
 lambda_la_dis: 0.01
-lambda_dis: 0.1
+lambda_dis: 1
 lambda_kl: 0.01
 lambda_gp: 10
 weight_decay: 0.0001
