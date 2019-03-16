@@ -144,8 +144,7 @@ class Evaluater(object):
         all_embs = np.array(all_embs)
         print(all_embs.shape)
         # TSNE
-        #embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
-        embs_2d = PCA().fit_transform(all_embs)
+        embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
         x_min, x_max = embs_2d.min(0), embs_2d.max(0)
         embs_norm = (embs_2d - x_min) / (x_max - x_min)
         # plot to figure
