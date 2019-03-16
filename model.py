@@ -6,6 +6,17 @@ import numpy as np
 from math import ceil
 from functools import reduce
 from torch.nn.utils import spectral_norm
+from utils import cc
+
+class DummyStaticEncoder(object):
+    def __init__(self, encoder):
+        self.encoder = encoder
+
+    def load(self, target_network):
+        self.encoder.load_state_dict(target_network.state_dict())
+
+    def __call__(self, x):
+        return self.encoder(x)
 
 def cal_gradpen(netD, real_data, fake_data, center=0, alpha=None, device='cuda'):
     if alpha is not None:
@@ -361,6 +372,16 @@ class AE(nn.Module):
                 subsample=s_subsample,
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
+        # dummy system
+        self.dummy_static_encoder = DummyStaticEncoder(cc(StaticEncoder(input_size=input_size, 
+                c_in=c_in, c_h=s_c_h, c_out=c_cond, 
+                c_bank=c_bank,
+                bank_size=bank_size, bank_scale=bank_scale,
+                kernel_size=kernel_size, 
+                n_conv_blocks=s_enc_n_conv_blocks, 
+                subsample=s_subsample,
+                n_dense_blocks=s_enc_n_dense_blocks, 
+                act=act, dropout_rate=dropout_rate)))
 
         self.dynamic_encoder = DynamicEncoder(c_in=c_in, c_h=d_c_h, c_out=c_latent, 
                 c_bank=c_bank,
@@ -394,19 +415,20 @@ class AE(nn.Module):
             return enc, emb, emb_pos, dec
         elif mode == 'gen_ae':
             with torch.no_grad():
-                emb_pos = self.static_encoder(x_pos)
                 emb_neg = self.static_encoder(x_neg)
                 # dynamic operation
-                enc = self.dynamic_encoder(x)
                 enc_pos = self.dynamic_encoder(x_pos)
+            emb_pos = self.static_encoder(x_pos)
+            enc = self.dynamic_encoder(x)
             # decode
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + d_noise, emb_pos)
             # synthesis with emb_neg 
             d_noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos.detach() + d_noise, emb_neg.detach())
-            # rec emb
-            emb_rec = self.static_encoder(dec_syn)
+            # rec emb, using dummy encoder to avoid grad update
+            self.dummy_static_encoder.load(self.static_encoder)
+            emb_rec = self.dummy_static_encoder(dec_syn)
             return enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn
         elif mode == 'dis_fake':
             # dynamic operation
@@ -518,14 +540,15 @@ class ProjectionDiscriminator(nn.Module):
             self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
+        h = []
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
             y = pad_layer_2d(out, self.conv_layers[l])
-            if l + 1 == self.sim_layer:
-                h = y 
+            h.append(y.view(y.size(0), y.size(1) * y.size(2) * y.size(3)))
             y = self.act(y)
             out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
         out = out.view(out.size(0), out.size(1)*out.size(2)*out.size(3))
+        h = torch.cat(h, dim=1)
         return out, h
 
     def dense_blocks(self, inp):
