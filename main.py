@@ -13,8 +13,8 @@ if __name__ == '__main__':
     parser.add_argument('-train_index_file', default='train_samples_128.json')
     parser.add_argument('-logdir', default='log/')
     parser.add_argument('--load_model', action='store_true')
+    parser.add_argument('--load_gen_opt', action='store_true')
     parser.add_argument('--load_opt', action='store_true')
-    parser.add_argument('--load_la_dis', action='store_true')
     parser.add_argument('--load_dis', action='store_true')
     parser.add_argument('-store_model_path', default='/storage/model/adaptive_vc/model')
     parser.add_argument('-load_model_path', default='/storage/model/adaptive_vc/model')
@@ -36,12 +36,6 @@ if __name__ == '__main__':
 
     if args.ae_iters > 0:
         solver.ae_pretrain(n_iterations=args.ae_iters)
-
-    #if args.la_dis_iters > 0:
-    #    solver.dis_latent_pretrain(n_iterations=args.la_dis_iters)
-
-    #if args.la_dis_iters > 0:
-    #    solver.ae_latent_train(n_iterations=args.latent_iters)
 
     if args.dis_iters > 0:
         solver.dis_pretrain(n_iterations=args.dis_iters)

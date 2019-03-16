@@ -27,6 +27,19 @@ def get_data_loader(dataset, batch_size, frame_size, shuffle=True, num_workers=4
             num_workers=num_workers, collate_fn=_collate_fn, pin_memory=True)
     return dataloader
 
+class SequenceDataset(Dataset):
+    def __init__(self, data):
+        self.data = data
+        self.utt_ids = list(self.data.keys())
+
+    def __getitem__(self, ind):
+        utt_id = self.utt_ids[ind]
+        ret = self.data[utt_id].transpose()
+        return ret
+
+    def __len__(self):
+        return len(self.utt_ids)
+
 class PickleDataset(Dataset):
     def __init__(self, pickle_path, sample_index_path, segment_size):
         with open(pickle_path, 'rb') as f:
