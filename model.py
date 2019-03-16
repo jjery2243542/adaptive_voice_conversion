@@ -518,14 +518,15 @@ class ProjectionDiscriminator(nn.Module):
             self.cond_linear = nn.Linear(c_cond, d_h)
 
     def conv_blocks(self, inp):
+        h = []
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
             y = pad_layer_2d(out, self.conv_layers[l])
-            if l + 1 == self.sim_layer:
-                h = y 
+            h.append(y.view(y.size(0), y.size(1) * y.size(2) * y.size(3)))
             y = self.act(y)
             out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
         out = out.view(out.size(0), out.size(1)*out.size(2)*out.size(3))
+        h = torch.cat(h, dim=1)
         return out, h
 
     def dense_blocks(self, inp):
