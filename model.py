@@ -361,6 +361,16 @@ class AE(nn.Module):
                 subsample=s_subsample,
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
+        # dummy system
+        self.dummy_static_encoder = StaticEncoder(input_size=input_size, 
+                c_in=c_in, c_h=s_c_h, c_out=c_cond, 
+                c_bank=c_bank,
+                bank_size=bank_size, bank_scale=bank_scale,
+                kernel_size=kernel_size, 
+                n_conv_blocks=s_enc_n_conv_blocks, 
+                subsample=s_subsample,
+                n_dense_blocks=s_enc_n_dense_blocks, 
+                act=act, dropout_rate=dropout_rate)
 
         self.dynamic_encoder = DynamicEncoder(c_in=c_in, c_h=d_c_h, c_out=c_latent, 
                 c_bank=c_bank,
@@ -406,7 +416,8 @@ class AE(nn.Module):
             d_noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos.detach() + d_noise, emb_neg.detach())
             # rec emb
-            emb_rec = self.static_encoder(dec_syn)
+            self.dummy_static_encoder.load_state_dict(self.static_encoder.state_dict())
+            emb_rec = self.dummy_static_encoder(dec_syn)
             return enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn
         elif mode == 'dis_fake':
             # dynamic operation
