@@ -35,7 +35,7 @@ class Solver(object):
         self.save_config()
 
         if args.load_model:
-            self.load_model(args.load_opt, args.load_dis)
+            self.load_model(args.load_opt, args.load_dis, args.load_gen_opt)
 
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
@@ -52,16 +52,17 @@ class Solver(object):
             yaml.dump(vars(self.args), f)
         return
 
-    def load_model(self, load_opt, load_dis):
+    def load_model(self, load_opt, load_dis, load_gen_opt):
         print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
         if load_dis:
             self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
             self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
+        if load_gen_opt:
             self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.gen.opt'))
         if load_dis and load_opt:
-            self.la_dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
+            self.dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
 
     def get_data_loaders(self):
@@ -102,7 +103,7 @@ class Solver(object):
                 dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
                 act=self.config.act,
-                dropout_rate=self.config.dropout_rate))
+                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy))
         print(self.model)
         self.discr = cc(ProjectionDiscriminator(
             input_size=(self.config.c_in, self.config.segment_size),
@@ -117,8 +118,11 @@ class Solver(object):
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay) 
-        self.gen_opt = torch.optim.Adam(self.model.decoder.parameters(), 
+                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)
+        params = list(self.model.decoder.parameters()) + list(self.model.dynamic_encoder.parameters())
+        if self.config.update_static_encoder:
+            params += list(self.model.static_encoder.parameters())
+        self.gen_opt = torch.optim.Adam(params, 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
@@ -127,6 +131,7 @@ class Solver(object):
         print(self.ae_opt)
         print(self.gen_opt)
         print(self.dis_opt)
+        print(f'update_static={self.config.update_static_encoder}, use_dummy={self.config.use_dummy}')
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
         return
 
@@ -195,10 +200,10 @@ class Solver(object):
                 self.config.lambda_srec * loss_srec + \
                 lambda_dis * loss_dis 
 
-        self.ae_opt.zero_grad()
+        self.gen_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.ae_opt.step()
+        self.gen_opt.step()
 
         meta = {'loss_rec': loss_rec.item(),
                 'loss_srec': loss_srec.item(),

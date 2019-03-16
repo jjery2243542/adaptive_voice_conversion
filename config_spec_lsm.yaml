@@ -51,5 +51,7 @@ dis_sched_iters: 10000
 rec_sched_iters: 30000
 sample_rate: 22050
 sn: False
+use_dummy: False
+update_static_encoder: False
 sim_layer: 1
 one_side_ls_weight: 1.0

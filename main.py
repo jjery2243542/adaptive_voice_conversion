@@ -13,6 +13,7 @@ if __name__ == '__main__':
     parser.add_argument('-train_index_file', default='train_samples_128.json')
     parser.add_argument('-logdir', default='log/')
     parser.add_argument('--load_model', action='store_true')
+    parser.add_argument('--load_gen_opt', action='store_true')
     parser.add_argument('--load_opt', action='store_true')
     parser.add_argument('--load_dis', action='store_true')
     parser.add_argument('-store_model_path', default='/storage/model/adaptive_vc/model')
