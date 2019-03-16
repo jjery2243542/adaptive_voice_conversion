@@ -118,8 +118,7 @@ class Solver(object):
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay) 
-        params = list(self.model.dynamic_encoder.parameters()) + list(self.model.decoder.parameters())
-        self.gen_opt = torch.optim.Adam(params, 
+        self.gen_opt = torch.optim.Adam(self.model.decoder.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
