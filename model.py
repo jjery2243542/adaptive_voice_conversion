@@ -8,9 +8,15 @@ from functools import reduce
 from torch.nn.utils import spectral_norm
 from utils import cc
 
-class DummySystem(object):
+class DummyStaticEncoder(object):
     def __init__(self, encoder):
         self.encoder = encoder
+
+    def load(self, target_network):
+        self.encoder.load_state_dict(target_network.state_dict())
+
+    def __call__(self, x):
+        return self.encoder(x)
 
 def cal_gradpen(netD, real_data, fake_data, center=0, alpha=None, device='cuda'):
     if alpha is not None:
@@ -367,7 +373,7 @@ class AE(nn.Module):
                 n_dense_blocks=s_enc_n_dense_blocks, 
                 act=act, dropout_rate=dropout_rate)
         # dummy system
-        self.ds = DummySystem(cc(StaticEncoder(input_size=input_size, 
+        self.dummy_static_encoder = DummyStaticEncoder(cc(StaticEncoder(input_size=input_size, 
                 c_in=c_in, c_h=s_c_h, c_out=c_cond, 
                 c_bank=c_bank,
                 bank_size=bank_size, bank_scale=bank_scale,
@@ -420,9 +426,9 @@ class AE(nn.Module):
             # synthesis with emb_neg 
             d_noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
             dec_syn = self.decoder(enc_pos.detach() + d_noise, emb_neg.detach())
-            # rec emb
-            self.ds.encoder.load_state_dict(self.static_encoder.state_dict())
-            emb_rec = self.ds.encoder(dec_syn)
+            # rec emb, using dummy encoder to avoid grad update
+            self.dummy_static_encoder.load(self.static_encoder)
+            emb_rec = self.dummy_static_encoder(dec_syn)
             return enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn
         elif mode == 'dis_fake':
             # dynamic operation
