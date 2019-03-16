@@ -35,7 +35,7 @@ class Solver(object):
         self.save_config()
 
         if args.load_model:
-            self.load_model(args.load_opt, args.load_la_dis, args.load_dis)
+            self.load_model(args.load_opt, args.load_dis)
 
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
