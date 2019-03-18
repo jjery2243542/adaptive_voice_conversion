@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, LatentDiscriminator
+from model import AE
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *

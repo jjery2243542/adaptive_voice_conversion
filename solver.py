@@ -231,6 +231,7 @@ class Solver(object):
                             x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch') 
         # for R1 regularization
         x.requires_grad = True
+        emb.requires_grad = True
         # input for the discriminator
         real_vals = self.discr(x, emb)
         fake_vals = self.discr(dec_syn, emb_syn)
@@ -241,7 +242,7 @@ class Solver(object):
 
         loss_real = criterion(real_vals, ones_label)
         loss_fake = criterion(fake_vals, zeros_label)
-        loss_gp = compute_grad(real_vals, x)
+        loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
 
         if self.config.use_mismatch:
             mismatch_vals = self.discr(x_mismatch, emb_neg)
