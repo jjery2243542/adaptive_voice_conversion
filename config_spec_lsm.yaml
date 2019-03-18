@@ -1,9 +1,9 @@
 c_in: 1025
-s_c_h: 256
-d_c_h: 256
+s_c_h: 128
+d_c_h: 128
 c_bank: 128
 c_latent: 128
-c_cond: 256
+c_cond: 128
 kernel_size: 7
 bank_size: 8 
 bank_scale: 1
@@ -19,14 +19,14 @@ dec_n_mlp_blocks: 4
 upsample: [2, 1, 2, 1, 2, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
-dis_c_h: 128
+dis_c_h: 64
 dis_kernel_size: 5
-dis_n_conv_blocks: 5
-dis_n_dense_layers: 3
+dis_n_conv_blocks: 4
+dis_n_dense_layers: 5
 dis_d_h: 1024
 segment_size: 128
 frame_size: 1
-batch_size: 6
+batch_size: 8
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002
@@ -35,8 +35,6 @@ beta2: 0.9
 amsgrad: False
 init_lambda_rec: 10
 final_lambda_rec: 10
-lambda_lsm_rec: 10
-lambda_sim: 0
 lambda_srec: 1
 lambda_dis: 1
 lambda_kl: 0.01
@@ -51,7 +49,4 @@ dis_sched_iters: 10000
 rec_sched_iters: 30000
 sample_rate: 22050
 sn: False
-use_dummy: False
-update_static_encoder: False
-sim_layer: 1
-one_side_ls_weight: 1.0
+use_dummy: True

@@ -107,11 +107,9 @@ def append_cond(x, cond):
 def conv_bank(x, module_list, act):
     outs = []
     for layer in module_list:
-        out = pad_layer(x, layer)
+        out = act(pad_layer(x, layer))
         outs.append(out)
-    outs = torch.cat(outs, dim=1)
-    outs = act(outs)
-    out = torch.cat([outs, x], dim=1)
+    out = torch.cat(outs + [x], dim=1)
     return out
 
 def get_act(act):
@@ -406,48 +404,42 @@ class AE(nn.Module):
         # for autoencoder pretraining
         if mode == 'pretrain_ae': 
             # static operation
-            emb = self.static_encoder(x)
             emb_pos = self.static_encoder(x_pos)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             # decode
             dec = self.decoder(enc + d_noise, emb_pos)
-            return enc, emb, emb_pos, dec
+            return enc, emb_pos, dec
         elif mode == 'gen_ae':
             with torch.no_grad():
+                # static operation
                 emb_neg = self.static_encoder(x_neg)
                 # dynamic operation
-                enc_pos = self.dynamic_encoder(x_pos)
-            emb_pos = self.static_encoder(x_pos)
-            enc = self.dynamic_encoder(x)
-            # decode
-            d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + d_noise, emb_pos)
+                enc = self.dynamic_encoder(x)
             # synthesis with emb_neg 
-            d_noise = enc_pos.new(*enc_pos.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos.detach() + d_noise, emb_neg.detach())
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc.detach() + d_noise, emb_neg.detach())
             # rec emb, using dummy encoder to avoid grad update
             if self.use_dummy:
                 self.dummy_static_encoder.load(self.static_encoder)
                 emb_rec = self.dummy_static_encoder(dec_syn)
             else:
                 emb_rec = self.static_encoder(dec_syn)
-            return enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn
-        elif mode == 'dis_fake':
-            # dynamic operation
-            enc = self.dynamic_encoder(x)
-            enc_pos = self.dynamic_encoder(x_pos)
-            emb_pos = self.static_encoder(x_pos)
-            emb_neg = self.static_encoder(x_neg)
-            d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + d_noise, emb_pos)
-            d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc_pos + d_noise, emb_neg)
-            return enc, enc_pos, emb_pos, emb_neg, dec, dec_syn
+            return enc, emb_neg, emb_rec, dec_syn
         elif mode == 'dis_real':
             emb = self.static_encoder(x)
             return emb
+        elif mode == 'dis_fake':
+            # dynamic operation
+            enc = self.dynamic_encoder(x)
+            emb_neg = self.static_encoder(x_neg)
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc + d_noise, emb_neg)
+            return enc, emb_neg, dec_syn
+        elif mode == 'dis_mismatch':
+            emb_neg = self.static_encoder(x_neg)
+            return emb_neg
 
     def inference(self, x, x_cond):
         emb = self.static_encoder(x_cond)
@@ -459,101 +451,43 @@ class AE(nn.Module):
         out = self.static_encoder(x)
         return out
 
-class LatentDiscriminator(nn.Module):
-    def __init__(self, input_size, 
-            c_in, c_h, kernel_size, n_conv_layers, 
-            n_dense_layers, d_h, act, dropout_rate):
-        super(LatentDiscriminator, self).__init__()
-        self.input_size = input_size
-        self.c_in = c_in
-        self.c_h = c_h
-        self.kernel_size = kernel_size
-        self.n_conv_layers = n_conv_layers
-        self.n_dense_layers = n_dense_layers
-        self.d_h = d_h
-        self.act = get_act(act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
-        self.conv_layers = nn.ModuleList(
-                [nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_layers)])
-        dense_input_size = int(input_size * (0.5**n_conv_layers) * c_h)
-        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size * 2, d_h)] + 
-                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
-                [nn.Linear(d_h, 1)])
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
-
-    def conv_blocks(self, inp):
-        out = pad_layer(inp, self.in_conv_layer)
-        for l in range(self.n_conv_layers):
-            out = pad_layer(out, self.conv_layers[l])
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = out.contiguous().view(out.size(0), out.size(1) * out.size(2))
-        return out
-
-    def dense_blocks(self, inp):
-        out = inp
-        for l in range(self.n_dense_layers - 1):
-            out = self.dense_layers[l](out)
-            out = self.act(out)
-            out = self.dropout_layer(out)
-        out = self.dense_layers[-1](out)
-        return out
-
-    def forward(self, x, x_context):
-        x_vec = self.conv_blocks(x)
-        x_context_vec = self.conv_blocks(x_context)
-        fused = torch.cat([x_vec, x_context_vec], dim=1)
-        val = self.dense_blocks(fused).squeeze(dim=1)
-        return val
-
 class ProjectionDiscriminator(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks, 
-            n_dense_layers, d_h, act, sn, sim_layer):
+            n_dense_layers, d_h, act, sn):
         super(ProjectionDiscriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
         self.act = get_act(act)
-        self.sim_layer = sim_layer
-        if sn:
-            self.in_conv_layer = spectral_norm(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
-            self.conv_layers = nn.ModuleList(
-                    [spectral_norm(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) \
-                            for _ in range(n_conv_blocks)])
-            dense_input_size = input_size 
-            for _ in range(n_conv_blocks):
-                dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-            dense_input_size = dense_input_size[0] * dense_input_size[1] * c_h
-            self.dense_layers = nn.ModuleList([spectral_norm(nn.Linear(dense_input_size, d_h))] + 
-                    [spectral_norm(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
-                    [spectral_norm(nn.Linear(d_h, 1))])
-            self.cond_linear = spectral_norm(nn.Linear(c_cond, d_h))
-        else:
-            self.in_conv_layer = nn.Conv2d(c_in, c_h, kernel_size=kernel_size)
-            self.conv_layers = nn.ModuleList(
-                    [nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2) for _ in range(n_conv_blocks)])
-            dense_input_size = input_size
-            for _ in range(n_conv_blocks):
-                dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-            dense_input_size = dense_input_size[0] * dense_input_size[1] * c_h
-            self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size, d_h)] + \
-                    [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + \
-                    [nn.Linear(d_h, 1)])
-            self.cond_linear = nn.Linear(c_cond, d_h)
+        # using spectral_norm if specified, or identity function
+        f = spectral_norm if sn else lambda x: x
+        self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
+        self.conv_layers = nn.ModuleList(
+                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) for _ in range(n_conv_blocks)])
+        # to process all frequency
+        dense_input_size = input_size 
+        for _ in range(n_conv_blocks):
+            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
+        self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
+                kernel_size=(dense_input_size[0], kernel_size), \
+                stride=(1, 1), padding=(0, kernel_size // 2)))
+        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
+        self.dense_layers = nn.ModuleList(
+                [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 1)] + 
+                [f(nn.Linear(d_h, 1))])
+        self.cond_linear = f(nn.Linear(c_cond, d_h, bias=False))
 
     def conv_blocks(self, inp):
-        h = []
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
-            y = pad_layer_2d(out, self.conv_layers[l])
-            h.append(y.view(y.size(0), y.size(1) * y.size(2) * y.size(3)))
-            y = self.act(y)
+            y = self.act(pad_layer_2d(out, self.conv_layers[l]))
             out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
-        out = out.view(out.size(0), out.size(1)*out.size(2)*out.size(3))
-        h = torch.cat(h, dim=1)
-        return out, h
+        out = self.act(self.out_conv_layer(out))
+        out = self.pooling_layer(out)
+        out = out.squeeze(2).squeeze(2)
+        return out
 
     def dense_blocks(self, inp):
         h = inp
@@ -566,32 +500,10 @@ class ProjectionDiscriminator(nn.Module):
     def forward(self, x, cond=None):
         if x.dim() == 3:
             x = x.unsqueeze(1)
-        x_vec, sim_h = self.conv_blocks(x)
+        x_vec = self.conv_blocks(x)
         out, h = self.dense_blocks(x_vec)
         if cond is not None:
             out += torch.sum(h * self.cond_linear(cond), dim=1, keepdim=True)
         out = out.squeeze(dim=1)
-        return out, sim_h
+        return out
 
-if __name__ == '__main__':
-    ae = AE(c_in=1, c_h=64, c_out=1, c_cond=32, 
-            kernel_size=60, 
-            bank_size=150, bank_scale=20, 
-            s_enc_n_conv_blocks=3, 
-            s_enc_n_dense_blocks=2, 
-            d_enc_n_conv_blocks=5, 
-            d_enc_n_dense_blocks=3, 
-            s_subsample=[2, 2, 2], 
-            d_subsample=[1, 2, 2, 2, 1], 
-            dec_n_conv_blocks=5, 
-            dec_n_dense_blocks=2, 
-            upsample=[1, 1, 2, 2, 2], 
-            act='lrelu', dropout_rate=0.5).cuda()
-    print(ae)
-    D = LatentDiscriminator(input_size=1000, c_in=128, c_h=256, kernel_size=60, 
-            n_conv_layers=4, d_h=512, act='lrelu', dropout_rate=0.5).cuda()
-    data = torch.randn(5, 1, 2000, device='cuda')
-    data_pos = torch.randn(5, 1, 8000, device='cuda')
-    data_neg = torch.randn(5, 1, 8000, device='cuda')
-    enc, enc_pos, enc_neg, dec, emb, emb_pos = ae(data, data_pos, data_neg)
-    o = D(torch.cat([enc, enc_pos], dim=1))

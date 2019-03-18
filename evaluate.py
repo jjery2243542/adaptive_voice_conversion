@@ -88,7 +88,8 @@ class Evaluater(object):
                 dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
                 act=self.config.act,
-                dropout_rate=self.config.dropout_rate))
+                dropout_rate=self.config.dropout_rate, 
+                use_dummy=self.config.use_dummy))
         print(self.model)
         self.model.eval()
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)

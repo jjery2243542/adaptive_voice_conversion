@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, LatentDiscriminator, ProjectionDiscriminator, cal_gradpen, compute_grad
+from model import AE, ProjectionDiscriminator, cal_gradpen, compute_grad
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -35,13 +35,12 @@ class Solver(object):
         self.save_config()
 
         if args.load_model:
-            self.load_model(args.load_opt, args.load_dis, args.load_gen_opt)
+            self.load_model(args.load_opt, args.load_dis)
 
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
         torch.save(self.ae_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
-        torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.gen.opt')
         torch.save(self.discr.state_dict(), f'{self.args.store_model_path}.{stage}.discr')
         torch.save(self.dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.discr.opt')
 
@@ -52,15 +51,13 @@ class Solver(object):
             yaml.dump(vars(self.args), f)
         return
 
-    def load_model(self, load_opt, load_dis, load_gen_opt):
+    def load_model(self, load_opt, load_dis):
         print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
         if load_dis:
             self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
             self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
-        if load_gen_opt:
-            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.gen.opt'))
         if load_dis and load_opt:
             self.dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
@@ -113,25 +110,16 @@ class Solver(object):
             kernel_size=self.config.dis_kernel_size, 
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
-            d_h=self.config.dis_d_h, act=self.config.act, sn=self.config.sn,
-            sim_layer=self.config.sim_layer))
+            d_h=self.config.dis_d_h, act=self.config.act, sn=self.config.sn))
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)
-        params = list(self.model.decoder.parameters()) + list(self.model.dynamic_encoder.parameters())
-        if self.config.update_static_encoder:
-            params += list(self.model.static_encoder.parameters())
-        self.gen_opt = torch.optim.Adam(params, 
-                lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
                 lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         print(self.ae_opt)
-        print(self.gen_opt)
         print(self.dis_opt)
-        print(f'update_static={self.config.update_static_encoder}, use_dummy={self.config.use_dummy}')
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
         return
 
@@ -144,108 +132,117 @@ class Solver(object):
     def ae_pretrain_step(self, data, lambda_rec):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
         if self.config.add_gaussian:
-            enc, emb, emb_pos, dec = self.model(self.noise_adder(x), 
+            enc, emb_pos, dec = self.model(self.noise_adder(x), 
                     self.noise_adder(x_pos), 
                     self.noise_adder(x_neg), 
                     mode='pretrain_ae')
         else:
-            enc, emb, emb_pos, dec = self.model(x, 
+            enc, emb_pos, dec = self.model(x, 
                     x_pos, 
                     x_neg,
                     mode='pretrain_ae')
 
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_kl = torch.mean(enc ** 2)
-        loss_sim = torch.mean((emb - emb_pos) ** 2)
         loss = lambda_rec * loss_rec + \
-                self.config.lambda_kl * loss_kl + \
-                self.config.lambda_sim * loss_sim
+                self.config.lambda_kl * loss_kl
         self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.ae_opt.step()
         meta = {'loss_rec': loss_rec.item(),
                 'loss_kl': loss_kl.item(),
-                'loss_sim': loss_sim.item(),
                 'grad_norm': grad_norm}
         return meta
 
-    def ae_gen_step(self, data, lambda_dis):
-        x, x_pos, x_neg = [cc(tensor) for tensor in data]
+    def ae_gen_step(self, data_ae, data_gen, lambda_dis):
+        x, x_pos, _ = [cc(tensor) for tensor in data_ae]
+        x_prime, _, x_neg = [cc(tensor) for tensor in data_ae]
         if self.config.add_gaussian:
-            enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn = self.model(self.noise_adder(x), 
+            enc, emb_pos, dec = self.model(self.noise_adder(x), 
                     self.noise_adder(x_pos), 
-                    self.noise_adder(x_neg),
+                    x_neg=None, 
+                    mode='pretrain_ae')
+            _, emb_neg, emb_rec, dec_syn = self.model(self.noise_adder(x_prime), 
+                    x_pos=None, 
+                    x_neg=self.noise_adder(x_neg),
                     mode='gen_ae')
         else:
-            enc, enc_pos, emb_pos, emb_neg, emb_rec, dec, dec_syn = self.model(x, 
+            enc, emb_pos, dec = self.model(x, 
                     x_pos, 
-                    x_neg, 
+                    x_neg=None, 
+                    mode='pretrain_ae')
+            _, emb_neg, emb_rec, dec_syn = self.model(x_prime, 
+                    x_pos=None, 
+                    x_neg=x_neg,
                     mode='gen_ae')
 
-        loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
-
-        _, real_h = self.discr(x)
-        _, fake_h = self.discr(dec)
-        loss_rec = torch.mean(torch.abs(real_h - fake_h))
+        loss_rec = torch.mean(torch.abs(dec - x))
         loss_kl = torch.mean(enc ** 2)
 
-        fake_vals, _ = self.discr(dec_syn, emb_neg.detach())
+        loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
+        fake_vals = self.discr(dec_syn, emb_neg.detach())
         criterion = nn.BCEWithLogitsLoss()
         ones_label = fake_vals.new_ones(*fake_vals.size())
         loss_dis = criterion(fake_vals, ones_label)
 
-        loss = self.config.lambda_lsm_rec * loss_rec + \
+        loss = self.config.final_lambda_rec * loss_rec + \
                 self.config.lambda_kl * loss_kl + \
                 self.config.lambda_srec * loss_srec + \
                 lambda_dis * loss_dis 
 
-        self.gen_opt.zero_grad()
+        self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.gen_opt.step()
+        self.ae_opt.step()
 
         meta = {'loss_rec': loss_rec.item(),
+                'loss_kl': loss_kl.item(),
                 'loss_srec': loss_srec.item(),
                 'loss_dis': loss_dis.item(),
                 'loss': loss.item(), 
                 'grad_norm': grad_norm}
         return meta
 
-    def dis_step(self, data_real, data_gen):
+    def dis_step(self, data_real, data_fake, data_mismatch):
         x, _, _ = [cc(tensor) for tensor in data_real]
-        x_prime, x_pos, x_neg = [cc(tensor) for tensor in data_gen]
+        x_prime, _, x_neg = [cc(tensor) for tensor in data_fake]
+        x_mismatch, _, x_mismatch_neg = [cc(tensor) for tensor in data_mismatch]
 
         with torch.no_grad():
             if self.config.add_gaussian:
                 emb = self.model(self.noise_adder(x), x_pos=None, x_neg=None, mode='dis_real')
-                _, _, emb_pos, emb_neg, dec, dec_syn = self.model(self.noise_adder(x_prime), 
-                        x_pos=self.noise_adder(x_pos), 
+                _, emb_syn, dec_syn = self.model(self.noise_adder(x_prime), 
+                        x_pos=None, 
                         x_neg=self.noise_adder(x_neg), 
                         mode='dis_fake')
+                emb_neg = self.model(x=None, 
+                        x_pos=None, x_neg=self.noise_adder(x_mismatch_neg), mode='dis_mismatch') 
             else:
                 emb = self.model(x, x_pos=None, x_neg=None, mode='dis_real')
-                _, _, emb_pos, emb_neg, dec, dec_syn = self.model(x_prime, 
-                        x_pos=x_pos, 
+                _, emb_syn, dec_syn = self.model(x=x_prime, 
+                        x_pos=None, 
                         x_neg=x_neg, 
                         mode='dis_fake')
+                emb_neg = self.model(x=None, 
+                        x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch') 
         # for R1 regularization
         x.requires_grad = True
         # input for the discriminator
-        real_vals, _ = self.discr(x, emb)
-        rec_fake_vals, _ = self.discr(dec, emb_pos)
-        con_fake_vals, _ = self.discr(dec_syn, emb_neg)
+        real_vals = self.discr(x, emb)
+        fake_vals = self.discr(dec_syn, emb_syn)
+        mismatch_vals = self.discr(x_mismatch, emb_neg)
 
-        ones_label = real_vals.new_ones(*real_vals.size()) * self.config.one_side_ls_weight 
-        zeros_label = rec_fake_vals.new_zeros(*rec_fake_vals.size())
+        ones_label = real_vals.new_ones(*real_vals.size()) 
+        zeros_label = fake_vals.new_zeros(*fake_vals.size())
         criterion = nn.BCEWithLogitsLoss()
 
         loss_real = criterion(real_vals, ones_label)
-        loss_rec_fake = criterion(rec_fake_vals, zeros_label)
-        loss_con_fake = criterion(con_fake_vals, zeros_label)
+        loss_fake = criterion(fake_vals, zeros_label)
+        loss_mismatch = criterion(mismatch_vals, zeros_label)
 
         loss_gp = compute_grad(real_vals, x)
-        loss_dis = loss_real + (loss_rec_fake + loss_con_fake) / 2
+        loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
         loss = loss_dis + self.config.lambda_gp * loss_gp
 
         self.dis_opt.zero_grad()
@@ -254,25 +251,25 @@ class Solver(object):
         self.dis_opt.step()
 
         real_probs = torch.sigmoid(real_vals)
-        rec_fake_probs = torch.sigmoid(rec_fake_vals)
-        con_fake_probs = torch.sigmoid(con_fake_vals)
+        fake_probs = torch.sigmoid(fake_vals)
+        mismatch_probs = torch.sigmoid(mismatch_vals)
 
         acc_real = torch.mean((real_probs >= 0.5).float())
-        acc_rec_fake = torch.mean((rec_fake_probs < 0.5).float())
-        acc_con_fake = torch.mean((con_fake_probs < 0.5).float())
-        acc = (acc_real + acc_rec_fake + acc_con_fake) / 3
+        acc_fake = torch.mean((fake_probs < 0.5).float())
+        acc_mismatch = torch.mean((mismatch_probs < 0.5).float())
+        acc = acc_real * 0.5 + acc_fake * 0.25 + acc_mismatch * 0.25
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
-                'loss_rec_fake': loss_rec_fake.item(),
-                'loss_con_fake': loss_con_fake.item(),
+                'loss_fake': loss_fake.item(),
+                'loss_mismatch': loss_mismatch.item(),
                 'loss_gp': loss_gp.item(),
                 'real_prob': torch.mean(real_probs).item(),
-                'rec_fake_prob': torch.mean(rec_fake_probs).item(),
-                'con_fake_prob': torch.mean(con_fake_probs).item(),
+                'fake_prob': torch.mean(fake_probs).item(),
+                'mismatch_prob': torch.mean(mismatch_probs).item(),
                 'acc_real': acc_real.item(),
-                'acc_rec_fake': acc_rec_fake.item(),
-                'acc_con_fake': acc_con_fake.item(),
+                'acc_fake': acc_fake.item(),
+                'acc_mismatch': acc_mismatch.item(),
                 'acc': acc.item(), 
                 'grad_norm': grad_norm}
         return meta
@@ -291,12 +288,10 @@ class Solver(object):
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
             loss_rec = meta['loss_rec']
-            loss_sim = meta['loss_sim']
             loss_kl = meta['loss_kl']
 
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
                     f'loss_kl={loss_kl:.2f}, '
-                    f'loss_sim={loss_sim:.2f}, '
                     f'lambda={lambda_rec:.1e}     ', 
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
@@ -313,16 +308,17 @@ class Solver(object):
                 lambda_dis = self.config.lambda_dis * (iteration + 1) / self.config.dis_sched_iters
             # AE step
             for ae_step in range(self.config.ae_steps):
-                data = next(self.train_iter)
-                gen_meta = self.ae_gen_step(data, lambda_dis=lambda_dis)
+                data_ae, data_gen = next(self.train_iter), next(self.train_iter)
+                gen_meta = self.ae_gen_step(data_ae, data_gen, lambda_dis=lambda_dis)
                 # add to logger
                 if iteration % self.args.summary_steps == 0:
-                    self.logger.scalars_summary(f'{self.args.tag}/ae_gen_train', gen_meta, iteration) 
+                    self.logger.scalars_summary(f'{self.args.tag}/gen_train', gen_meta, iteration) 
 
             # D step
             for dis_step in range(self.config.dis_steps):
-                data, data_prime = next(self.train_iter), next(self.train_iter)
-                dis_meta = self.dis_step(data, data_prime)
+                data_real = next(self.train_iter)
+                data_fake, data_mismatch = next(self.train_iter), next(self.train_iter)
+                dis_meta = self.dis_step(data_real, data_fake, data_mismatch)
                 # add to logger
                 if iteration % self.args.summary_steps == 0:
                     self.logger.scalars_summary(f'{self.args.tag}/dis_train', dis_meta, iteration) 
@@ -330,9 +326,11 @@ class Solver(object):
             loss_rec = gen_meta['loss_rec']
             loss_srec = gen_meta['loss_srec']
             loss_dis = gen_meta['loss_dis']
+            acc = dis_meta['acc']
             print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
                     f'loss_srec={loss_srec:.2f}, '
                     f'loss_dis={loss_dis:.2f}, '
+                    f'acc={acc:.2f}, '
                     f'lambda={lambda_dis:.1e}     ', 
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
@@ -341,18 +339,23 @@ class Solver(object):
 
     def dis_pretrain(self, n_iterations):
         for iteration in range(n_iterations):
-            data, data_prime = next(self.train_iter), next(self.train_iter)
-            meta = self.dis_step(data, data_prime)
+            data_real = next(self.train_iter)
+            data_fake, data_mismatch = next(self.train_iter), next(self.train_iter)
+            meta = self.dis_step(data_real, data_fake, data_mismatch)
             # add to logger
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
             real_prob = meta['real_prob']
-            fake_prob = meta['con_fake_prob']
+            fake_prob = meta['fake_prob']
+            mismatch_prob = meta['mismatch_prob']
             gp = meta['loss_gp']
 
             print(f'D:[{iteration + 1}/{n_iterations}], '
-                    f'real_prob={real_prob:.2f}, fake_prob={fake_prob:.2f}, gp={gp:.2f}     ', end='\r')
+                    f'real_prob={real_prob:.2f}, '
+                    f'fake_prob={fake_prob:.2f}, '
+                    f'mismatch_prob={mismatch_prob:.2f}, '
+                    f'gp={gp:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='dis')
