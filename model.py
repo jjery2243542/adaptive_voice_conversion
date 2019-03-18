@@ -465,17 +465,17 @@ class ProjectionDiscriminator(nn.Module):
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
         self.conv_layers = nn.ModuleList(
-                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=2)) for _ in range(n_conv_blocks)])
+                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, 1))) for _ in range(n_conv_blocks)])
         # to process all frequency
         dense_input_size = input_size 
         for _ in range(n_conv_blocks):
-            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / 2))
-        self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
+            dense_input_size = (ceil(dense_input_size[0] / 2), dense_input_size[1])
+        self.out_conv_layer = f(nn.Conv2d(c_h, c_h, \
                 kernel_size=(dense_input_size[0], kernel_size), \
                 stride=(1, 1), padding=(0, kernel_size // 2)))
-        self.pooling_layer = nn.AdaptiveAvgPool2d(1)
-        self.dense_layers = nn.ModuleList(
-                [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 1)] + 
+        dense_input_size = dense_input_size[1] * c_h
+        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size, d_h))] + 
+                [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
                 [f(nn.Linear(d_h, 1))])
         self.cond_linear = f(nn.Linear(c_cond, d_h, bias=False))
 
@@ -483,10 +483,9 @@ class ProjectionDiscriminator(nn.Module):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
             y = self.act(pad_layer_2d(out, self.conv_layers[l]))
-            out = y + F.avg_pool2d(out, kernel_size=2, ceil_mode=True)
+            out = y + F.avg_pool2d(out, kernel_size=(2, 1), ceil_mode=True)
         out = self.act(self.out_conv_layer(out))
-        out = self.pooling_layer(out)
-        out = out.squeeze(2).squeeze(2)
+        out = out.view(out.size(0), out.size(1) * out.size(2) * out.size(3))
         return out
 
     def dense_blocks(self, inp):

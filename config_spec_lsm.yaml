@@ -11,20 +11,20 @@ s_enc_n_conv_blocks: 6
 s_enc_n_dense_blocks: 2
 d_enc_n_conv_blocks: 6
 d_enc_n_dense_blocks: 0
-s_subsample: [1, 2, 1, 2, 1, 2]
-d_subsample: [1, 2, 1, 2, 1, 2]
+s_subsample: [1, 1, 2, 1, 1, 2]
+d_subsample: [1, 1, 2, 1, 1, 2]
 dec_n_conv_blocks: 6
 dec_n_dense_blocks: 2
 dec_n_mlp_blocks: 4
-upsample: [2, 1, 2, 1, 2, 1] 
+upsample: [2, 1, 1, 2, 1, 1] 
 act: 'lrelu'
 dropout_rate: 0.5
-dis_c_h: 64
+dis_c_h: 128
 dis_kernel_size: 5
-dis_n_conv_blocks: 4
+dis_n_conv_blocks: 5
 dis_n_dense_layers: 5
 dis_d_h: 1024
-segment_size: 128
+segment_size: 32
 frame_size: 1
 batch_size: 8
 shuffle: True
@@ -50,3 +50,4 @@ rec_sched_iters: 30000
 sample_rate: 22050
 sn: False
 use_dummy: True
+use_mismatch: False

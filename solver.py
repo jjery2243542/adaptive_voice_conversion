@@ -216,22 +216,23 @@ class Solver(object):
                         x_pos=None, 
                         x_neg=self.noise_adder(x_neg), 
                         mode='dis_fake')
-                emb_neg = self.model(x=None, 
-                        x_pos=None, x_neg=self.noise_adder(x_mismatch_neg), mode='dis_mismatch') 
+                if self.config.use_mismatch:
+                    emb_neg = self.model(x=None, 
+                            x_pos=None, x_neg=self.noise_adder(x_mismatch_neg), mode='dis_mismatch') 
             else:
                 emb = self.model(x, x_pos=None, x_neg=None, mode='dis_real')
                 _, emb_syn, dec_syn = self.model(x=x_prime, 
                         x_pos=None, 
                         x_neg=x_neg, 
                         mode='dis_fake')
-                emb_neg = self.model(x=None, 
-                        x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch') 
+                if self.config.use_mismatch:
+                    emb_neg = self.model(x=None, 
+                            x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch') 
         # for R1 regularization
         x.requires_grad = True
         # input for the discriminator
         real_vals = self.discr(x, emb)
         fake_vals = self.discr(dec_syn, emb_syn)
-        mismatch_vals = self.discr(x_mismatch, emb_neg)
 
         ones_label = real_vals.new_ones(*real_vals.size()) 
         zeros_label = fake_vals.new_zeros(*fake_vals.size())
@@ -239,10 +240,14 @@ class Solver(object):
 
         loss_real = criterion(real_vals, ones_label)
         loss_fake = criterion(fake_vals, zeros_label)
-        loss_mismatch = criterion(mismatch_vals, zeros_label)
-
         loss_gp = compute_grad(real_vals, x)
-        loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
+
+        if self.config.use_mismatch:
+            mismatch_vals = self.discr(x_mismatch, emb_neg)
+            loss_mismatch = criterion(mismatch_vals, zeros_label)
+            loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
+        else:
+             loss_dis = loss_real + loss_fake
         loss = loss_dis + self.config.lambda_gp * loss_gp
 
         self.dis_opt.zero_grad()
@@ -252,26 +257,31 @@ class Solver(object):
 
         real_probs = torch.sigmoid(real_vals)
         fake_probs = torch.sigmoid(fake_vals)
-        mismatch_probs = torch.sigmoid(mismatch_vals)
 
         acc_real = torch.mean((real_probs >= 0.5).float())
         acc_fake = torch.mean((fake_probs < 0.5).float())
-        acc_mismatch = torch.mean((mismatch_probs < 0.5).float())
-        acc = acc_real * 0.5 + acc_fake * 0.25 + acc_mismatch * 0.25
+
+        if self.config.use_mismatch:
+            mismatch_probs = torch.sigmoid(mismatch_vals)
+            acc_mismatch = torch.mean((mismatch_probs < 0.5).float())
+            acc = acc_real * 0.5 + acc_fake * 0.25 + acc_mismatch * 0.25
+        else:
+            acc = (acc_real + acc_fake) / 2
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
                 'loss_fake': loss_fake.item(),
-                'loss_mismatch': loss_mismatch.item(),
                 'loss_gp': loss_gp.item(),
                 'real_prob': torch.mean(real_probs).item(),
                 'fake_prob': torch.mean(fake_probs).item(),
-                'mismatch_prob': torch.mean(mismatch_probs).item(),
                 'acc_real': acc_real.item(),
                 'acc_fake': acc_fake.item(),
-                'acc_mismatch': acc_mismatch.item(),
                 'acc': acc.item(), 
                 'grad_norm': grad_norm}
+        if self.config.use_mismatch:
+            meta['mismatch_prob'] = torch.mean(mismatch_probs).item()
+            meta['loss_mismatch'] = loss_mismatch.item()
+            meta['acc_mismatch'] = acc_mismatch.item()
         return meta
 
     def ae_pretrain(self, n_iterations):
@@ -348,13 +358,11 @@ class Solver(object):
 
             real_prob = meta['real_prob']
             fake_prob = meta['fake_prob']
-            mismatch_prob = meta['mismatch_prob']
             gp = meta['loss_gp']
 
             print(f'D:[{iteration + 1}/{n_iterations}], '
                     f'real_prob={real_prob:.2f}, '
                     f'fake_prob={fake_prob:.2f}, '
-                    f'mismatch_prob={mismatch_prob:.2f}, '
                     f'gp={gp:.2f}     ', end='\r')
 
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
