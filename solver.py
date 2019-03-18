@@ -242,7 +242,10 @@ class Solver(object):
 
         loss_real = criterion(real_vals, ones_label)
         loss_fake = criterion(fake_vals, zeros_label)
-        loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
+        if not self.config.use_inter_gp:
+            loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
+        else:
+            loss_gp = cal_gradpen(self.discr, x, emb, dec_syn, emb_syn, center=self.config.gp_center) 
 
         if self.config.use_mismatch:
             mismatch_vals = self.discr(x_mismatch, emb_neg)

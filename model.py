@@ -18,20 +18,27 @@ class DummyStaticEncoder(object):
     def __call__(self, x):
         return self.encoder(x)
 
-def cal_gradpen(netD, real_data, fake_data, center=0, alpha=None, device='cuda'):
+def cal_gradpen(netD, real_data, real_cond, fake_data, fake_cond, center=0, alpha=None, device='cuda'):
     if alpha is not None:
         alpha = torch.tensor(alpha, device=device)  # torch.rand(real_data.size(0), 1, device=device)
     else:
-        alpha = torch.rand(real_data.size(0), 1, 1, device=device)
-    alpha = alpha.expand(real_data.size())
-    interpolates = alpha * real_data + ((1 - alpha) * fake_data)
+        alpha = torch.rand(real_data.size(0), 1, device=device)
+    alpha_exp = alpha.unsqueeze(2).expand(real_data.size())
+    interpolates = alpha_exp * real_data + ((1 - alpha_exp) * fake_data)
+    alpha_exp = alpha.expand(real_cond.size())
+    interpolates_cond = alpha_exp * real_cond + ((1 - alpha_exp) * fake_cond) 
     interpolates.requires_grad_(True)
-    disc_interpolates = netD(interpolates)
-    gradients = ag.grad(outputs=disc_interpolates, inputs=interpolates,
+    interpolates_cond.requires_grad_(True)
+    disc_interpolates = netD(interpolates, interpolates_cond)
+    gradients_x = ag.grad(outputs=disc_interpolates, inputs=interpolates,
                         grad_outputs=torch.ones(disc_interpolates.size()).to(device),
                         create_graph=True, retain_graph=True, only_inputs=True)[0]
-    gradient_penalty = ((gradients.norm(2, dim=1) - center) ** 2).mean()
-    return gradient_penalty
+    gradients_c = ag.grad(outputs=disc_interpolates, inputs=interpolates_cond,
+                        grad_outputs=torch.ones(disc_interpolates.size()).to(device),
+                        create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradient_penalty_x = ((gradients_x.norm(2, dim=1) - center) ** 2).mean()
+    gradient_penalty_c = ((gradients_c.norm(2, dim=1) - center) ** 2).mean()
+    return gradient_penalty_x + gradient_penalty_c
 
 def compute_grad(d_out, x_in, center=0):
     # add activation sigmoid
