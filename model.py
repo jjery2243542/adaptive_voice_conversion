@@ -454,26 +454,28 @@ class AE(nn.Module):
 class ProjectionDiscriminator(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_cond, 
-            kernel_size, n_conv_blocks, 
+            kernel_size, n_conv_blocks,
+            subsample, 
             n_dense_layers, d_h, act, sn):
         super(ProjectionDiscriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
+        self.subsample = subsample
         self.act = get_act(act)
         # using spectral_norm if specified, or identity function
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
         self.conv_layers = nn.ModuleList(
-                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, 1))) for _ in range(n_conv_blocks)])
+                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
         # to process all frequency
         dense_input_size = input_size 
-        for _ in range(n_conv_blocks):
-            dense_input_size = (ceil(dense_input_size[0] / 2), dense_input_size[1])
-        self.out_conv_layer = f(nn.Conv2d(c_h, c_h, \
+        for l, sub in zip(range(n_conv_blocks), self.subsample):
+            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / sub))
+        self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
                 kernel_size=(dense_input_size[0], kernel_size), \
                 stride=(1, 1), padding=(0, kernel_size // 2)))
-        dense_input_size = dense_input_size[1] * c_h
+        dense_input_size = dense_input_size[1] * d_h
         self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size, d_h))] + 
                 [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
                 [f(nn.Linear(d_h, 1))])
@@ -483,7 +485,7 @@ class ProjectionDiscriminator(nn.Module):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
             y = self.act(pad_layer_2d(out, self.conv_layers[l]))
-            out = y + F.avg_pool2d(out, kernel_size=(2, 1), ceil_mode=True)
+            out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
         out = self.act(self.out_conv_layer(out))
         out = out.view(out.size(0), out.size(1) * out.size(2) * out.size(3))
         return out

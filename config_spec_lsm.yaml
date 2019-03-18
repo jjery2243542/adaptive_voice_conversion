@@ -22,6 +22,7 @@ dropout_rate: 0.5
 dis_c_h: 128
 dis_kernel_size: 5
 dis_n_conv_blocks: 5
+dis_subsample: [1, 2, 1, 2, 1]
 dis_n_dense_layers: 5
 dis_d_h: 1024
 segment_size: 32
