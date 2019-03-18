@@ -92,7 +92,7 @@ if __name__ == '__main__':
                 print(f'processing {i} files')
             filename = path.strip().split('/')[-1]
             mel, mag = spec_feature_extraction(path)
-            data[filename] = {'mel': mel, 'mag':mag}
+            data[filename] = mag 
         with open(output_path, 'wb') as f:
             pickle.dump(data, f)
 

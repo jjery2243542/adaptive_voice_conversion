@@ -17,6 +17,7 @@ class Hyperparams:
     # data = "/data/private/voice/nick"
     test_data = 'harvard_sentences.txt'
     max_duration = 10.0
+    top_db = 15
 
     # signal processing
     sr = 22050 # Sample rate.
