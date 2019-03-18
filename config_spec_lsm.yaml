@@ -39,7 +39,7 @@ final_lambda_rec: 10
 lambda_srec: 1
 lambda_dis: 1
 lambda_kl: 0.01
-lambda_gp: 10
+lambda_gp: 0
 weight_decay: 0.0001
 add_gaussian: False
 gaussian_std: 0.1
@@ -52,5 +52,5 @@ sample_rate: 22050
 sn: False
 use_dummy: True
 use_mismatch: False
-use_inter_gp: True
+use_inter_gp: False
 gp_center: 1
