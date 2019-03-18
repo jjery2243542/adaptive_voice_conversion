@@ -52,3 +52,5 @@ sample_rate: 22050
 sn: False
 use_dummy: True
 use_mismatch: False
+use_inter_gp: False
+gp_center: 0
