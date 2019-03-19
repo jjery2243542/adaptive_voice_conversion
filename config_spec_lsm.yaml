@@ -32,7 +32,7 @@ batch_size: 8
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002
-beta1: 0.0
+beta1: 0.5
 beta2: 0.999
 amsgrad: False
 init_lambda_rec: 10

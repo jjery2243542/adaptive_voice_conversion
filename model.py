@@ -290,7 +290,7 @@ class DynamicEncoder(nn.Module):
 # Conv_blocks followed by dense blocks
 class Decoder(nn.Module):
     def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, n_mlp_blocks,
-            n_conv_blocks, upsample, n_dense_blocks, act):
+            n_conv_blocks, upsample, n_dense_blocks, act, sn):
         super(Decoder, self).__init__()
         self.c_in = c_in
         self.c_h = c_h
@@ -302,22 +302,23 @@ class Decoder(nn.Module):
         self.upsample = upsample
         self.act = get_act(act)
         self.mlp = MLP(c_in=c_cond, c_h=c_cond, n_blocks=n_mlp_blocks, act=act)
-        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=1)
-        self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
+        f = spectral_norm if sn else lambda x: x
+        self.in_conv_layer = f(nn.Conv1d(c_in, c_h, kernel_size=1))
+        self.first_conv_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=kernel_size)) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(\
-                [nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size) \
+                [f(nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size)) \
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
                 [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks*2)])
-        self.first_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
+        self.first_dense_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=1)) \
                 for _ in range(n_dense_blocks)])
-        self.second_dense_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=1) \
+        self.second_dense_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=1)) \
                 for _ in range(n_dense_blocks)])
         self.dense_affine_layers = nn.ModuleList(
                 [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks*2)])
-        self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
+        self.out_conv_layer = f(nn.Conv1d(c_h, c_out, kernel_size=1))
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
@@ -365,7 +366,7 @@ class AE(nn.Module):
             s_subsample, d_subsample, 
             dec_n_conv_blocks, dec_n_dense_blocks,
             dec_n_mlp_blocks,
-            upsample, act, dropout_rate, use_dummy):
+            upsample, act, dropout_rate, use_dummy, sn):
         super(AE, self).__init__()
         self.use_dummy = use_dummy
         self.static_encoder = StaticEncoder(input_size=input_size, 
@@ -405,7 +406,7 @@ class AE(nn.Module):
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
                 n_dense_blocks=dec_n_dense_blocks, 
-                act=act)
+                act=act, sn=sn)
 
     def forward(self, x, x_pos, x_neg, mode):
         # for autoencoder pretraining

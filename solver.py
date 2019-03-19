@@ -100,7 +100,7 @@ class Solver(object):
                 dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
                 act=self.config.gen_act,
-                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy))
+                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn))
         print(self.model)
         self.discr = cc(ProjectionDiscriminator(
             input_size=(self.config.c_in, self.config.segment_size),
