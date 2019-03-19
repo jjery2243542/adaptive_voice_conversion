@@ -16,8 +16,9 @@ d_subsample: [1, 2, 1, 2, 1, 2]
 dec_n_conv_blocks: 6
 dec_n_dense_blocks: 2
 dec_n_mlp_blocks: 4
-upsample: [2, 1, 2, 1, 2, 1] 
-act: 'lrelu'
+upsample: [2, 1, 2, 1, 2, 1]
+gen_act: 'relu'
+dis_act: 'lrelu'
 dropout_rate: 0.5
 dis_c_h: 128
 dis_kernel_size: 5
@@ -31,8 +32,8 @@ batch_size: 8
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0002
-beta1: 0.5
-beta2: 0.9
+beta1: 0.0
+beta2: 0.999
 amsgrad: False
 init_lambda_rec: 10
 final_lambda_rec: 10

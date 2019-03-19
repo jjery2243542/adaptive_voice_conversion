@@ -99,7 +99,7 @@ class Solver(object):
                 dec_n_dense_blocks=self.config.dec_n_dense_blocks,
                 dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
-                act=self.config.act,
+                act=self.config.gen_act,
                 dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy))
         print(self.model)
         self.discr = cc(ProjectionDiscriminator(
@@ -111,7 +111,7 @@ class Solver(object):
             kernel_size=self.config.dis_kernel_size, 
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
-            d_h=self.config.dis_d_h, act=self.config.act, sn=self.config.sn))
+            d_h=self.config.dis_d_h, act=self.config.dis_act, sn=self.config.sn))
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
