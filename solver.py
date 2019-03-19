@@ -116,10 +116,14 @@ class Solver(object):
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)
+        self.gen_opt = torch.optim.Adam(self.model.decoder.parameters(), 
+                lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
+                amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
                 lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)  
         print(self.ae_opt)
+        print(self.gen_opt)
         print(self.dis_opt)
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
         return
@@ -179,26 +183,20 @@ class Solver(object):
                     mode='gen_ae')
 
         loss_rec = torch.mean(torch.abs(dec - x))
-        loss_kl = torch.mean(enc ** 2)
-
         loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
         fake_vals = self.discr(dec_syn, emb_neg.detach())
-        criterion = nn.BCEWithLogitsLoss()
-        ones_label = fake_vals.new_ones(*fake_vals.size())
-        loss_dis = criterion(fake_vals, ones_label)
+        loss_dis = -torch.mean(fake_vals)
 
         loss = self.config.final_lambda_rec * loss_rec + \
-                self.config.lambda_kl * loss_kl + \
                 self.config.lambda_srec * loss_srec + \
                 lambda_dis * loss_dis 
 
-        self.ae_opt.zero_grad()
+        self.gen_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.ae_opt.step()
+        self.gen_opt.step()
 
         meta = {'loss_rec': loss_rec.item(),
-                'loss_kl': loss_kl.item(),
                 'loss_srec': loss_srec.item(),
                 'loss_dis': loss_dis.item(),
                 'loss': loss.item(), 
@@ -228,7 +226,8 @@ class Solver(object):
                         mode='dis_fake')
                 if self.config.use_mismatch:
                     emb_neg = self.model(x=None, 
-                            x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch') 
+                            x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
+
         # for R1 regularization
         x.requires_grad = True
         emb.requires_grad = True
@@ -236,12 +235,8 @@ class Solver(object):
         real_vals = self.discr(x, emb)
         fake_vals = self.discr(dec_syn, emb_syn)
 
-        ones_label = real_vals.new_ones(*real_vals.size()) 
-        zeros_label = fake_vals.new_zeros(*fake_vals.size())
-        criterion = nn.BCEWithLogitsLoss()
-
-        loss_real = criterion(real_vals, ones_label)
-        loss_fake = criterion(fake_vals, zeros_label)
+        loss_real = torch.mean(F.relu(1.0 - real_vals))
+        loss_fake = torch.mean(F.relu(1.0 + fake_vals))
 
         if self.config.lambda_gp == 0:
             loss_gp = real_vals.new_zeros(1)
@@ -252,10 +247,10 @@ class Solver(object):
 
         if self.config.use_mismatch:
             mismatch_vals = self.discr(x_mismatch, emb_neg)
-            loss_mismatch = criterion(mismatch_vals, zeros_label)
+            loss_mismatch = F.relu(1.0 + mismatch_vals)
             loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
         else:
-             loss_dis = loss_real + loss_fake
+            loss_dis = loss_real + loss_fake
         loss = loss_dis + self.config.lambda_gp * loss_gp
 
         self.dis_opt.zero_grad()
@@ -263,33 +258,17 @@ class Solver(object):
         grad_norm = torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
         self.dis_opt.step()
 
-        real_probs = torch.sigmoid(real_vals)
-        fake_probs = torch.sigmoid(fake_vals)
-
-        acc_real = torch.mean((real_probs >= 0.5).float())
-        acc_fake = torch.mean((fake_probs < 0.5).float())
-
-        if self.config.use_mismatch:
-            mismatch_probs = torch.sigmoid(mismatch_vals)
-            acc_mismatch = torch.mean((mismatch_probs < 0.5).float())
-            acc = acc_real * 0.5 + acc_fake * 0.25 + acc_mismatch * 0.25
-        else:
-            acc = (acc_real + acc_fake) / 2
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
                 'loss_fake': loss_fake.item(),
                 'loss_gp': loss_gp.item(),
-                'real_prob': torch.mean(real_probs).item(),
-                'fake_prob': torch.mean(fake_probs).item(),
-                'acc_real': acc_real.item(),
-                'acc_fake': acc_fake.item(),
-                'acc': acc.item(), 
+                'real_val': torch.mean(real_vals).item(),
+                'fake_val': torch.mean(fake_vals).item(),
                 'grad_norm': grad_norm}
         if self.config.use_mismatch:
-            meta['mismatch_prob'] = torch.mean(mismatch_probs).item()
+            meta['mismatch_val'] = torch.mean(mismatch_vals).item()
             meta['loss_mismatch'] = loss_mismatch.item()
-            meta['acc_mismatch'] = acc_mismatch.item()
         return meta
 
     def ae_pretrain(self, n_iterations):
@@ -344,11 +323,9 @@ class Solver(object):
             loss_rec = gen_meta['loss_rec']
             loss_srec = gen_meta['loss_srec']
             loss_dis = gen_meta['loss_dis']
-            acc = dis_meta['acc']
             print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
                     f'loss_srec={loss_srec:.2f}, '
                     f'loss_dis={loss_dis:.2f}, '
-                    f'acc={acc:.2f}, '
                     f'lambda={lambda_dis:.1e}     ', 
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
@@ -364,14 +341,12 @@ class Solver(object):
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
 
-            real_prob = meta['real_prob']
-            fake_prob = meta['fake_prob']
-            gp = meta['loss_gp']
+            real_val = meta['real_val']
+            fake_val = meta['fake_val']
 
             print(f'D:[{iteration + 1}/{n_iterations}], '
-                    f'real_prob={real_prob:.2f}, '
-                    f'fake_prob={fake_prob:.2f}, '
-                    f'gp={gp:.2f}     ', end='\r')
+                    f'real_val={real_val:.2f}, '
+                    f'fake_val={fake_val:.2f}      ', end='\r')
 
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='dis')

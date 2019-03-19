@@ -49,8 +49,8 @@ dis_steps: 1
 dis_sched_iters: 10000
 rec_sched_iters: 30000
 sample_rate: 22050
-sn: False
-use_dummy: True
+sn: True
+use_dummy: False
 use_mismatch: False
 use_inter_gp: False
 gp_center: 1

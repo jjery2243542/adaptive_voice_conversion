@@ -491,8 +491,7 @@ class ProjectionDiscriminator(nn.Module):
     def conv_blocks(self, inp):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
-            y = self.act(pad_layer_2d(out, self.conv_layers[l]))
-            out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
+            out = self.act(pad_layer_2d(out, self.conv_layers[l]))
         out = self.act(self.out_conv_layer(out))
         out = out.view(out.size(0), out.size(1) * out.size(2) * out.size(3))
         return out
