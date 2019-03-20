@@ -126,13 +126,14 @@ def get_act(act):
         return nn.ReLU()
 
 class MLP(nn.Module):
-    def __init__(self, c_in, c_h, n_blocks, act):
+    def __init__(self, c_in, c_h, n_blocks, act, sn):
         super(MLP, self).__init__()
         self.act = get_act(act)
         self.n_blocks = n_blocks
-        self.in_dense_layer = nn.Linear(c_in, c_h)
-        self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_blocks)])
-        self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_blocks)])
+        f = spectral_norm if sn else lambda x: x
+        self.in_dense_layer = f(nn.Linear(c_in, c_h))
+        self.first_dense_layers = nn.ModuleList([f(nn.Linear(c_h, c_h)) for _ in range(n_blocks)])
+        self.second_dense_layers = nn.ModuleList([f(nn.Linear(c_h, c_h)) for _ in range(n_blocks)])
 
     def forward(self, x):
         h = self.in_dense_layer(x)
@@ -299,7 +300,7 @@ class Decoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
         self.act = get_act(act)
-        self.mlp = MLP(c_in=c_cond, c_h=c_cond, n_blocks=n_mlp_blocks, act=act)
+        self.mlp = MLP(c_in=c_cond, c_h=c_cond, n_blocks=n_mlp_blocks, act=act, sn=sn)
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv1d(c_in, c_h, kernel_size=1))
         self.first_conv_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=kernel_size)) for _ \
@@ -309,13 +310,13 @@ class Decoder(nn.Module):
                 for _, up in zip(range(n_conv_blocks), self.upsample)])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
-                [nn.Linear(c_cond, c_h * 2) for _ in range(n_conv_blocks*2)])
+                [f(nn.Linear(c_cond, c_h * 2)) for _ in range(n_conv_blocks*2)])
         self.first_dense_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=1)) \
                 for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=1)) \
                 for _ in range(n_dense_blocks)])
         self.dense_affine_layers = nn.ModuleList(
-                [nn.Linear(c_cond, c_h * 2) for _ in range(n_dense_blocks*2)])
+                [f(nn.Linear(c_cond, c_h * 2)) for _ in range(n_dense_blocks*2)])
         self.out_conv_layer = f(nn.Conv1d(c_h, c_out, kernel_size=1))
 
     def forward(self, x, cond):

@@ -26,7 +26,7 @@ dis_n_conv_blocks: 5
 dis_subsample: [2, 1, 2, 1, 2]
 dis_n_dense_layers: 3
 dis_d_h: 1024
-segment_size: 64
+segment_size: 128
 frame_size: 1
 batch_size: 6
 shuffle: True
