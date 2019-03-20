@@ -26,7 +26,7 @@ dis_n_conv_blocks: 5
 dis_subsample: [2, 1, 2, 1, 2]
 dis_n_dense_layers: 3
 dis_d_h: 1024
-segment_size: 128
+segment_size: 64
 frame_size: 1
 batch_size: 6
 shuffle: True
@@ -40,12 +40,13 @@ final_lambda_rec: 10
 lambda_srec: 1
 lambda_dis: 1
 lambda_kl: 0.01
+lambda_gp: 1
 weight_decay: 0.0001
 add_gaussian: False
 gaussian_std: 0.1
 grad_norm: 1
 ae_steps: 1
-dis_steps: 2
+dis_steps: 5
 dis_sched_iters: 10000
 rec_sched_iters: 30000
 sample_rate: 22050

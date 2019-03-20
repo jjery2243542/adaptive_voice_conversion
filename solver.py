@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, Discriminator
+from model import AE, Discriminator, compute_grad
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -245,12 +245,14 @@ class Solver(object):
         else:
             loss_dis = loss_real + loss_fake
         loss = loss_dis
+        if self.config.lambda_gp > 0:
+            loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
+            loss += loss_gp
 
         self.dis_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
         self.dis_opt.step()
-
 
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
@@ -261,6 +263,8 @@ class Solver(object):
         if self.config.use_mismatch:
             meta['mismatch_val'] = torch.mean(mismatch_vals).item()
             meta['loss_mismatch'] = loss_mismatch.item()
+        if self.config.lambda_gp > 0:
+            meta['loss_gp'] = loss_gp.item()
         return meta
 
     def ae_pretrain(self, n_iterations):
