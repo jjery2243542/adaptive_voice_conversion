@@ -49,7 +49,7 @@ def compute_grad(d_out, x_in, center=0):
     gradient_penalty = ((gradients.norm(2, dim=1) - center) ** 2).mean()
     return gradient_penalty
 
-def pad_layer(inp, layer):
+def pad_layer(inp, layer, pad_type='reflect'):
     kernel_size = layer.kernel_size[0]
     if kernel_size % 2 == 0:
         pad = (kernel_size//2, kernel_size//2 - 1)
@@ -58,11 +58,11 @@ def pad_layer(inp, layer):
     # padding
     inp = F.pad(inp, 
             pad=pad,
-            mode='reflect')
+            mode=pad_type)
     out = layer(inp)
     return out
 
-def pad_layer_2d(inp, layer):
+def pad_layer_2d(inp, layer, pad_type='reflect'):
     kernel_size = layer.kernel_size[0]
     if kernel_size % 2 == 0:
         pad = (kernel_size//2, kernel_size//2 - 1, kernel_size//2, kernel_size//2 - 1)
@@ -71,7 +71,7 @@ def pad_layer_2d(inp, layer):
     # padding
     inp = F.pad(inp, 
             pad=pad,
-            mode='reflect')
+            mode=pad_type)
     out = layer(inp)
     return out
 
@@ -109,10 +109,10 @@ def append_cond(x, cond):
     out = x * std.unsqueeze(dim=2) + mean.unsqueeze(dim=2)
     return out
 
-def conv_bank(x, module_list, act):
+def conv_bank(x, module_list, act, pad_type='reflect'):
     outs = []
     for layer in module_list:
-        out = act(pad_layer(x, layer))
+        out = act(pad_layer(x, layer, pad_type))
         outs.append(out)
     out = torch.cat(outs + [x], dim=1)
     return out
@@ -180,10 +180,10 @@ class StaticEncoder(nn.Module):
         out = inp
         # convolution blocks
         for l in range(self.n_conv_blocks):
-            y = pad_layer(out, self.first_conv_layers[l])
+            y = pad_layer(out, self.first_conv_layers[l], pad_type='constant')
             y = self.act(y)
             y = self.dropout_layer(y)
-            y = pad_layer(y, self.second_conv_layers[l])
+            y = pad_layer(y, self.second_conv_layers[l], pad_type='constant')
             y = self.act(y)
             y = self.dropout_layer(y)
             if self.subsample[l] > 1:
@@ -205,9 +205,9 @@ class StaticEncoder(nn.Module):
         return out
 
     def forward(self, x):
-        out = conv_bank(x, self.conv_bank, act=self.act)
+        out = conv_bank(x, self.conv_bank, act=self.act, pad_type='constant')
         # dimension reduction layer
-        out = pad_layer(out, self.in_conv_layer)
+        out = pad_layer(out, self.in_conv_layer, pad_type='constant')
         out = self.act(out)
         # conv blocks
         out = self.conv_blocks(out)
@@ -484,39 +484,37 @@ class Discriminator(nn.Module):
         self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
                 kernel_size=(dense_input_size[0], kernel_size), \
                 stride=(1, 1), padding=(0, kernel_size // 2)))
-        self.combine_layer = f(nn.Conv1d(d_h + c_cond, d_h, kernel_size=1))
         dense_input_size = dense_input_size[1] * d_h
-        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size + c_cond, d_h))] + 
-                [f(nn.Linear(d_h + c_cond, d_h)) for _ in range(n_dense_layers - 2)] + 
-                [f(nn.Linear(d_h + c_cond, 1))])
+        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size, d_h))] + 
+                [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
+                [f(nn.Linear(d_h, 1))])
+        self.linear_cond = f(nn.Linear(c_cond, d_h, bias=False))
 
-    def conv_blocks(self, inp, cond):
-        out = self.act(pad_layer_2d(inp, self.in_conv_layer))
+    def conv_blocks(self, inp):
+        out = self.act(pad_layer_2d(inp, self.in_conv_layer, pad_type='constant'))
         for l in range(self.n_conv_blocks):
-            y = self.act(pad_layer_2d(out, self.first_conv_layers[l]))
-            y = self.act(pad_layer_2d(y, self.second_conv_layers[l]))
+            y = self.act(pad_layer_2d(out, self.first_conv_layers[l], pad_type='constant'))
+            y = self.act(pad_layer_2d(y, self.second_conv_layers[l], pad_type='constant'))
             out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
         out = self.out_conv_layer(out).squeeze(2)
-        out = self.act(out)
-        out = self.combine_layer(concat_cond(out, cond))
         out = self.act(out)
         out = out.view(out.size(0), out.size(1) * out.size(2))
         return out
 
-    def dense_blocks(self, inp, cond):
+    def dense_blocks(self, inp):
         h = inp
         for l in range(self.n_dense_layers - 1):
-            h = torch.cat([h, cond], dim=1)
             h = self.dense_layers[l](h)
             h = self.act(h)
-        h = torch.cat([h, cond], dim=1)
         out = self.dense_layers[-1](h)
-        return out
+        return out, h
 
     def forward(self, x, cond):
         if x.dim() == 3:
             x = x.unsqueeze(1)
-        x_vec = self.conv_blocks(x, cond)
-        out = self.dense_blocks(x_vec, cond)
-        return out
+        x_vec = self.conv_blocks(x)
+        val, h = self.dense_blocks(x_vec)
+        cond_val = torch.sum(h * self.linear_cond(cond), dim=1, keepdim=True)
+        val += cond_val
+        return val, cond_val
 
