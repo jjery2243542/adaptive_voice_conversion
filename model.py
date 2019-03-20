@@ -93,15 +93,13 @@ def flatten(x):
     out = x.contiguous().view(x.size(0), x.size(1) * x.size(2))
     return out
 
-#DEPRECATED
-#def append_cond(x, cond):
-#    # x = [batch_size, x_channels, length]
-#    # cond = [batch_size, x_channels]
-#    cond = cond.unsqueeze(dim=2)
-#    cond = cond.expand(*cond.size()[:-1], x.size(-1))
-#    out = torch.cat([x, cond], dim=1)
-#    #out = x + cond
-#    return out
+def concat_cond(x, cond):
+    # x = [batch_size, x_channels, length]
+    # cond = [batch_size, c_channels]
+    cond = cond.unsqueeze(dim=2)
+    cond = cond.expand(*cond.size()[:-1], x.size(-1))
+    out = torch.cat([x, cond], dim=1)
+    return out
 
 def append_cond(x, cond):
     # x = [batch_size, x_channels, length]
@@ -415,8 +413,8 @@ class AE(nn.Module):
             emb_pos = self.static_encoder(x_pos)
             # dynamic operation
             enc = self.dynamic_encoder(x)
-            d_noise = enc.new(*enc.size()).normal_(0, 1)
             # decode
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + d_noise, emb_pos)
             return enc, emb_pos, dec
         elif mode == 'gen_ae':
@@ -459,13 +457,13 @@ class AE(nn.Module):
         out = self.static_encoder(x)
         return out
 
-class ProjectionDiscriminator(nn.Module):
+class Discriminator(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks,
             subsample, 
             n_dense_layers, d_h, act, sn):
-        super(ProjectionDiscriminator, self).__init__()
+        super(Discriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
@@ -474,7 +472,9 @@ class ProjectionDiscriminator(nn.Module):
         # using spectral_norm if specified, or identity function
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
-        self.conv_layers = nn.ModuleList(
+        self.first_conv_layers = nn.ModuleList(
+                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for _ in range(self.n_conv_blocks)])
+        self.second_conv_layers = nn.ModuleList(
                 [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
         # to process all frequency
         dense_input_size = input_size 
@@ -483,35 +483,39 @@ class ProjectionDiscriminator(nn.Module):
         self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
                 kernel_size=(dense_input_size[0], kernel_size), \
                 stride=(1, 1), padding=(0, kernel_size // 2)))
+        self.combine_layer = f(nn.Conv1d(d_h + c_cond, d_h, kernel_size=1))
         dense_input_size = dense_input_size[1] * d_h
-        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size, d_h))] + 
-                [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
-                [f(nn.Linear(d_h, 1))])
-        self.cond_linear = f(nn.Linear(c_cond, d_h, bias=False))
+        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size + c_cond, d_h))] + 
+                [f(nn.Linear(d_h + c_cond, d_h)) for _ in range(n_dense_layers - 2)] + 
+                [f(nn.Linear(d_h + c_cond, 1))])
 
-    def conv_blocks(self, inp):
+    def conv_blocks(self, inp, cond):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
-            out = self.act(pad_layer_2d(out, self.conv_layers[l]))
-        out = self.act(self.out_conv_layer(out))
-        out = out.view(out.size(0), out.size(1) * out.size(2) * out.size(3))
+            y = self.act(pad_layer_2d(out, self.first_conv_layers[l]))
+            y = self.act(pad_layer_2d(y, self.second_conv_layers[l]))
+            out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
+        out = self.out_conv_layer(out).squeeze(2)
+        out = self.act(out)
+        out = self.combine_layer(concat_cond(out, cond))
+        out = self.act(out)
+        out = out.view(out.size(0), out.size(1) * out.size(2))
         return out
 
-    def dense_blocks(self, inp):
+    def dense_blocks(self, inp, cond):
         h = inp
         for l in range(self.n_dense_layers - 1):
+            h = torch.cat([h, cond], dim=1)
             h = self.dense_layers[l](h)
             h = self.act(h)
+        h = torch.cat([h, cond], dim=1)
         out = self.dense_layers[-1](h)
-        return out, h
+        return out
 
-    def forward(self, x, cond=None):
+    def forward(self, x, cond):
         if x.dim() == 3:
             x = x.unsqueeze(1)
-        x_vec = self.conv_blocks(x)
-        out, h = self.dense_blocks(x_vec)
-        if cond is not None:
-            out += torch.sum(h * self.cond_linear(cond), dim=1, keepdim=True)
-        out = out.squeeze(dim=1)
+        x_vec = self.conv_blocks(x, cond)
+        out = self.dense_blocks(x_vec, cond)
         return out
 

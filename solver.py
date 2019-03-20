@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, ProjectionDiscriminator, cal_gradpen, compute_grad
+from model import AE, Discriminator
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -102,7 +102,7 @@ class Solver(object):
                 act=self.config.gen_act,
                 dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn))
         print(self.model)
-        self.discr = cc(ProjectionDiscriminator(
+        self.discr = cc(Discriminator(
             input_size=(self.config.c_in, self.config.segment_size),
             c_in=1, 
             c_h=self.config.dis_c_h, 
@@ -238,20 +238,13 @@ class Solver(object):
         loss_real = torch.mean(F.relu(1.0 - real_vals))
         loss_fake = torch.mean(F.relu(1.0 + fake_vals))
 
-        if self.config.lambda_gp == 0:
-            loss_gp = real_vals.new_zeros(1)
-        elif self.config.use_inter_gp:
-            loss_gp = cal_gradpen(self.discr, x, emb, dec_syn, emb_syn, center=self.config.gp_center) 
-        elif self.config.lambda_gp > 0: 
-            loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
-
         if self.config.use_mismatch:
             mismatch_vals = self.discr(x_mismatch, emb_neg)
-            loss_mismatch = F.relu(1.0 + mismatch_vals)
+            loss_mismatch = torch.mean(F.relu(1.0 + mismatch_vals))
             loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
         else:
             loss_dis = loss_real + loss_fake
-        loss = loss_dis + self.config.lambda_gp * loss_gp
+        loss = loss_dis
 
         self.dis_opt.zero_grad()
         loss.backward()
@@ -262,7 +255,6 @@ class Solver(object):
         meta = {'loss_dis': loss_dis.item(),
                 'loss_real': loss_real.item(),
                 'loss_fake': loss_fake.item(),
-                'loss_gp': loss_gp.item(),
                 'real_val': torch.mean(real_vals).item(),
                 'fake_val': torch.mean(fake_vals).item(),
                 'grad_norm': grad_norm}
