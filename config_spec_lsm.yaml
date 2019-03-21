@@ -40,7 +40,7 @@ amsgrad: False
 init_lambda_rec: 10
 final_lambda_rec: 10
 lambda_srec: 1
-lambda_dis: 0.1
+lambda_dis: 1
 lambda_kl: 0.01
 lambda_gp: 10 
 weight_decay: 0.0001
@@ -48,8 +48,8 @@ add_gaussian: False
 gaussian_std: 0.1
 grad_norm: 1
 ae_steps: 1
-dis_steps: 1
-dis_sched_iters: 10000
+dis_steps: 2
+dis_sched_iters: 50000
 rec_sched_iters: 30000
 sample_rate: 22050
 sn: True

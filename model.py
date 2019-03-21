@@ -497,10 +497,6 @@ class Discriminator(nn.Module):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer, pad_type='constant'))
         for l in range(self.n_conv_blocks):
             y = self.act(pad_layer_2d(out, self.first_conv_layers[l], pad_type='constant'))
-<<<<<<< HEAD
-=======
-            y = self.norm_layer(y)
->>>>>>> 1b4fed9dbfddb8a6f30c4ae9faa0a54756bd503f
             y = self.act(pad_layer_2d(y, self.second_conv_layers[l], pad_type='constant'))
             y = self.norm_layer(y)
             out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
