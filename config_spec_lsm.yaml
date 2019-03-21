@@ -26,6 +26,7 @@ dis_n_conv_blocks: 5
 dis_subsample: [2, 1, 2, 1, 2]
 dis_n_dense_layers: 3
 dis_d_h: 1024
+dis_ins_norm: True
 segment_size: 64
 frame_size: 1
 batch_size: 8

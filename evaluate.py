@@ -157,12 +157,12 @@ class Evaluater(object):
     def plot_segment_embeddings(self, output_path):
         # filter the samples by speakers sampled
         # hack code 
-        small_indexes = [index for index in self.indexes if index[0][:len('p000')] in self.sampled_speakers]
+        small_indexes = [index for index in self.indexes if index[3][:len('p000')] in self.sampled_speakers]
         random.shuffle(small_indexes)
         small_indexes = small_indexes[:self.args.max_samples]
         # generate the tensor and dataloader for evaluation
-        tensor = [self.pkl_data[key][t:t + self.config.segment_size] for key, t, _, _, _ in small_indexes]
-        speakers = [key[:len('p000')] for key, _, _, _, _  in small_indexes]
+        tensor = [self.pkl_data[key][t:t + self.config.segment_size] for _, _, _, key, t in small_indexes]
+        speakers = [key[:len('p000')] for _, _, _, key, _  in small_indexes]
         # add the dimension for channel
         tensor = self.seg_make_frames(torch.from_numpy(np.array(tensor)))
         dataset = TensorDataset(tensor)

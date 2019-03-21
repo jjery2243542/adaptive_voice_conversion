@@ -111,7 +111,8 @@ class Solver(object):
             kernel_size=self.config.dis_kernel_size, 
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
-            d_h=self.config.dis_d_h, act=self.config.dis_act, sn=self.config.sn))
+            d_h=self.config.dis_d_h, act=self.config.dis_act, 
+            sn=self.config.sn, ins_norm=self.config.dis_ins_norm))
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
