@@ -463,13 +463,14 @@ class Discriminator(nn.Module):
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks,
             subsample, 
-            n_dense_layers, d_h, act, sn):
+            n_dense_layers, d_h, act, sn, ins_norm):
         super(Discriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers
         self.subsample = subsample
         self.act = get_act(act)
+        self.ins_norm = ins_norm
         # using spectral_norm if specified, or identity function
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
@@ -477,6 +478,8 @@ class Discriminator(nn.Module):
                 [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for _ in range(self.n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(
                 [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
+        if self.ins_norm:
+            self.norm_layer = nn.InstanceNorm2d(c_h)
         # to process all frequency
         dense_input_size = input_size 
         for l, sub in zip(range(n_conv_blocks), self.subsample):
@@ -494,7 +497,9 @@ class Discriminator(nn.Module):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer, pad_type='constant'))
         for l in range(self.n_conv_blocks):
             y = self.act(pad_layer_2d(out, self.first_conv_layers[l], pad_type='constant'))
+            y = self.ins_norm(y)
             y = self.act(pad_layer_2d(y, self.second_conv_layers[l], pad_type='constant'))
+            y = self.ins_norm(y)
             out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
         out = self.out_conv_layer(out).squeeze(2)
         out = self.act(out)
