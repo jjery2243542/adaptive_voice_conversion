@@ -29,7 +29,7 @@ def cal_gradpen(netD, real_data, real_cond, fake_data, fake_cond, center=0, alph
     interpolates_cond = alpha_exp * real_cond + ((1 - alpha_exp) * fake_cond) 
     interpolates.requires_grad_(True)
     interpolates_cond.requires_grad_(True)
-    disc_interpolates, _ = netD(interpolates, interpolates_cond)
+    disc_interpolates = netD(interpolates, interpolates_cond)
     gradients_x = ag.grad(outputs=disc_interpolates, inputs=interpolates,
                         grad_outputs=torch.ones(disc_interpolates.size()).to(device),
                         create_graph=True, retain_graph=True, only_inputs=True)[0]
@@ -458,13 +458,76 @@ class AE(nn.Module):
         out = self.static_encoder(x)
         return out
 
-class Discriminator(nn.Module):
+class ConcatDiscriminator(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks,
             subsample, 
             n_dense_layers, d_h, act, sn, ins_norm):
-        super(Discriminator, self).__init__()
+        super(ConcatDiscriminator, self).__init__()
+        # input_size is a tuple
+        self.n_conv_blocks = n_conv_blocks
+        self.n_dense_layers = n_dense_layers
+        self.subsample = subsample
+        self.act = get_act(act)
+        self.ins_norm = ins_norm
+        # using spectral_norm if specified, or identity function
+        f = spectral_norm if sn else lambda x: x
+        self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
+        self.conv_layers = nn.ModuleList(
+                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
+        if self.ins_norm:
+            self.norm_layer = nn.InstanceNorm2d(c_h)
+        # to process all frequency
+        dense_input_size = input_size 
+        for l, sub in zip(range(n_conv_blocks), self.subsample):
+            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / sub))
+        self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
+                kernel_size=(dense_input_size[0], kernel_size), \
+                stride=(1, 1), padding=(0, kernel_size // 2)))
+        self.combine_layer = f(nn.Conv1d(d_h + c_cond, d_h, kernel_size=1))
+        dense_input_size = dense_input_size[1] * d_h
+        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size + c_cond, d_h))] + 
+                [f(nn.Linear(d_h + c_cond, d_h)) for _ in range(n_dense_layers - 2)] + 
+                [f(nn.Linear(d_h + c_cond, 1))])
+
+    def conv_blocks(self, inp, cond):
+        out = self.act(pad_layer_2d(inp, self.in_conv_layer, pad_type='constant'))
+        for l in range(self.n_conv_blocks):
+            y = self.act(pad_layer_2d(out, self.conv_layers[l], pad_type='constant'))
+            y = self.norm_layer(y)
+            out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
+        out = self.out_conv_layer(out).squeeze(2)
+        out = self.act(out)
+        out = self.combine_layer(concat_cond(out, cond))
+        out = self.act(out)
+        out = out.view(out.size(0), out.size(1) * out.size(2))
+        return out
+
+    def dense_blocks(self, inp, cond):
+        h = inp
+        for l in range(self.n_dense_layers - 1):
+            h = torch.cat([h, cond], dim=1)
+            h = self.dense_layers[l](h)
+            h = self.act(h)
+        h = torch.cat([h, cond], dim=1)
+        out = self.dense_layers[-1](h)
+        return out
+
+    def forward(self, x, cond):
+        if x.dim() == 3:
+            x = x.unsqueeze(1)
+        x_vec = self.conv_blocks(x, cond)
+        val = self.dense_blocks(x_vec, cond)
+        return val
+
+class ProjectDiscriminator(nn.Module):
+    def __init__(self, input_size, 
+            c_in, c_h, c_cond, 
+            kernel_size, n_conv_blocks,
+            subsample, 
+            n_dense_layers, d_h, act, sn, ins_norm):
+        super(ProjectDiscriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_layers = n_dense_layers

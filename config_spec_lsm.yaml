@@ -33,7 +33,7 @@ batch_size: 8
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0004
-beta1: 0
+beta1: 0.5
 beta2: 0.999
 amsgrad: False
 init_lambda_rec: 10
@@ -53,4 +53,4 @@ rec_sched_iters: 30000
 sample_rate: 22050
 sn: True
 use_dummy: False
-use_mismatch: False
+use_mismatch: True

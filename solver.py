@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, Discriminator, compute_grad, cal_gradpen
+from model import AE, ConcatDiscriminator, ProjectDiscriminator, compute_grad, cal_gradpen
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -102,7 +102,7 @@ class Solver(object):
                 act=self.config.gen_act,
                 dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn))
         print(self.model)
-        self.discr = cc(Discriminator(
+        self.discr = cc(ConcatDiscriminator(
             input_size=(self.config.c_in, self.config.segment_size),
             c_in=1, 
             c_h=self.config.dis_c_h, 
@@ -185,7 +185,7 @@ class Solver(object):
 
         loss_rec = torch.mean(torch.abs(dec - x))
         loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
-        fake_vals, cond_vals = self.discr(dec_syn, emb_neg.detach())
+        fake_vals = self.discr(dec_syn, emb_neg.detach())
         loss_dis = -torch.mean(fake_vals)
 
         loss = self.config.final_lambda_rec * loss_rec + \
@@ -201,7 +201,6 @@ class Solver(object):
                 'loss_srec': loss_srec.item(),
                 'loss_dis': loss_dis.item(),
                 'loss': loss.item(),
-                'cond_val': torch.mean(cond_vals).item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -234,14 +233,14 @@ class Solver(object):
         x.requires_grad = True
         emb.requires_grad = True
         # input for the discriminator
-        real_vals, real_cond_vals = self.discr(x, emb)
-        fake_vals, fake_cond_vals = self.discr(dec_syn, emb_syn)
+        real_vals = self.discr(x, emb)
+        fake_vals = self.discr(dec_syn, emb_syn)
 
         loss_real = -torch.mean(real_vals)
         loss_fake = torch.mean(fake_vals)
 
         if self.config.use_mismatch:
-            mismatch_vals, mismatch_cond_vals = self.discr(x_mismatch, emb_neg)
+            mismatch_vals = self.discr(x_mismatch, emb_neg)
             loss_mismatch = torch.mean(F.relu(1.0 + mismatch_vals))
             loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
         else:
@@ -263,12 +262,9 @@ class Solver(object):
                 'loss_fake': loss_fake.item(),
                 'real_val': torch.mean(real_vals).item(),
                 'fake_val': torch.mean(fake_vals).item(),
-                'real_cond_val': torch.mean(real_cond_vals).item(),
-                'fake_cond_val': torch.mean(fake_cond_vals).item(),
                 'grad_norm': grad_norm}
         if self.config.use_mismatch:
             meta['mismatch_val'] = torch.mean(mismatch_vals).item()
-            meta['mismatch_cond_val'] = torch.mean(mismatch_cond_vals).item()
             meta['loss_mismatch'] = loss_mismatch.item()
         if self.config.lambda_gp > 0:
             meta['loss_gp'] = loss_gp.item()
