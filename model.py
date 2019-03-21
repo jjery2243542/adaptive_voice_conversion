@@ -29,7 +29,7 @@ def cal_gradpen(netD, real_data, real_cond, fake_data, fake_cond, center=0, alph
     interpolates_cond = alpha_exp * real_cond + ((1 - alpha_exp) * fake_cond) 
     interpolates.requires_grad_(True)
     interpolates_cond.requires_grad_(True)
-    disc_interpolates = netD(interpolates, interpolates_cond)
+    disc_interpolates, _ = netD(interpolates, interpolates_cond)
     gradients_x = ag.grad(outputs=disc_interpolates, inputs=interpolates,
                         grad_outputs=torch.ones(disc_interpolates.size()).to(device),
                         create_graph=True, retain_graph=True, only_inputs=True)[0]
@@ -474,9 +474,7 @@ class Discriminator(nn.Module):
         # using spectral_norm if specified, or identity function
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
-        self.first_conv_layers = nn.ModuleList(
-                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for _ in range(self.n_conv_blocks)])
-        self.second_conv_layers = nn.ModuleList(
+        self.conv_layers = nn.ModuleList(
                 [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
         if self.ins_norm:
             self.norm_layer = nn.InstanceNorm2d(c_h)
@@ -496,9 +494,7 @@ class Discriminator(nn.Module):
     def conv_blocks(self, inp):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer, pad_type='constant'))
         for l in range(self.n_conv_blocks):
-            y = self.act(pad_layer_2d(out, self.first_conv_layers[l], pad_type='constant'))
-            y = self.norm_layer(y)
-            y = self.act(pad_layer_2d(y, self.second_conv_layers[l], pad_type='constant'))
+            y = self.act(pad_layer_2d(out, self.conv_layers[l], pad_type='constant'))
             y = self.norm_layer(y)
             out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
         out = self.out_conv_layer(out).squeeze(2)

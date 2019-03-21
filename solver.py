@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, Discriminator, compute_grad
+from model import AE, Discriminator, compute_grad, cal_gradpen
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -237,8 +237,8 @@ class Solver(object):
         real_vals, real_cond_vals = self.discr(x, emb)
         fake_vals, fake_cond_vals = self.discr(dec_syn, emb_syn)
 
-        loss_real = torch.mean(F.relu(1.0 - real_vals))
-        loss_fake = torch.mean(F.relu(1.0 + fake_vals))
+        loss_real = -torch.mean(real_vals)
+        loss_fake = torch.mean(fake_vals)
 
         if self.config.use_mismatch:
             mismatch_vals, mismatch_cond_vals = self.discr(x_mismatch, emb_neg)
@@ -248,7 +248,9 @@ class Solver(object):
             loss_dis = loss_real + loss_fake
         loss = loss_dis
         if self.config.lambda_gp > 0:
-            loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
+            # R1 regularization
+            #loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
+            loss_gp = cal_gradpen(self.discr, x, emb, dec_syn, emb_syn, center=1.0)
             loss += loss_gp
 
         self.dis_opt.zero_grad()
