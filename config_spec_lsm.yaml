@@ -35,13 +35,14 @@ gen_lr: 0.0001
 dis_lr: 0.0004
 beta1: 0
 beta2: 0.999
+ema_weight: 0.999
 amsgrad: False
 init_lambda_rec: 10
 final_lambda_rec: 10
 lambda_srec: 1
 lambda_dis: 1
 lambda_kl: 0.01
-lambda_gp: 0 
+lambda_gp: 10 
 weight_decay: 0.0001
 add_gaussian: False
 gaussian_std: 0.1
