@@ -37,6 +37,11 @@ class Solver(object):
         if args.load_model:
             self.load_model(args.load_opt, args.load_dis)
 
+        self.ema = EMA(mu=self.config.ema_weight)
+        for name, param in self.model.decoder.named_parameters():
+            if param.requires_grad:
+                self.ema.register(name, param.data)
+
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
@@ -196,6 +201,9 @@ class Solver(object):
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.gen_opt.step()
+        for name, param in self.model.decoder.named_parameters():
+            if param.requires_grad:
+                param.data = self.ema(name, param.data)
 
         meta = {'loss_rec': loss_rec.item(),
                 'loss_srec': loss_srec.item(),

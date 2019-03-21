@@ -35,6 +35,7 @@ gen_lr: 0.0001
 dis_lr: 0.0004
 beta1: 0
 beta2: 0.999
+ema_weight: 0.999
 amsgrad: False
 init_lambda_rec: 10
 final_lambda_rec: 10

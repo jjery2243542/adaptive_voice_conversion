@@ -36,25 +36,20 @@ def cc(net):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     return net.to(device)
 
-class EMA(nn.Module):
-    def __init__(self, momentum=0.9):
-        super(EMA, self).__init__()
-        self.momentum = momentum
-        self.last_average = None
-        
-    def forward(self, x):
-        if self.last_average is None:
-            new_average = x
-        else:
-            new_average = (1 - self.momentum) * x + self.momentum * self.last_average
-        self.last_average = new_average.detach()
+
+class EMA(object):
+    def __init__(self, mu):
+        self.mu = mu
+        self.shadow = {}
+
+    def register(self, name, val):
+        self.shadow[name] = val.clone()
+
+    def __call__(self, name, x):
+        assert name in self.shadow
+        new_average = (1.0 - self.mu) * x + self.mu * self.shadow[name]
+        self.shadow[name] = new_average.clone()
         return new_average
-    
-    def get_moving_average(self):
-        if self.last_average:
-            return self.last_average.item()
-        else:
-            return 0
 
 def weight_init(m):
     '''
