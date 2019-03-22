@@ -142,16 +142,10 @@ class Solver(object):
 
     def ae_pretrain_step(self, data, lambda_rec):
         x, x_pos, x_neg = [cc(tensor) for tensor in data]
-        if self.config.add_gaussian:
-            enc, emb_pos, dec = self.model(self.noise_adder(x), 
-                    self.noise_adder(x_pos), 
-                    self.noise_adder(x_neg), 
-                    mode='pretrain_ae')
-        else:
-            enc, emb_pos, dec = self.model(x, 
-                    x_pos, 
-                    x_neg,
-                    mode='pretrain_ae')
+        enc, emb_pos, dec = self.model(x, 
+                x_pos, 
+                x_neg,
+                mode='pretrain_ae')
 
         loss_rec = self.weighted_l1_loss(dec, x)
         loss_kl = torch.mean(enc ** 2)
@@ -169,24 +163,14 @@ class Solver(object):
     def ae_gen_step(self, data_ae, data_gen, lambda_dis):
         x, x_pos, _ = [cc(tensor) for tensor in data_ae]
         x_prime, _, x_neg = [cc(tensor) for tensor in data_ae]
-        if self.config.add_gaussian:
-            enc, emb_pos, dec = self.model(self.noise_adder(x), 
-                    self.noise_adder(x_pos), 
-                    x_neg=None, 
-                    mode='pretrain_ae')
-            _, emb_neg, emb_rec, dec_syn = self.model(self.noise_adder(x_prime), 
-                    x_pos=None, 
-                    x_neg=self.noise_adder(x_neg),
-                    mode='gen_ae')
-        else:
-            enc, emb_pos, dec = self.model(x, 
-                    x_pos, 
-                    x_neg=None, 
-                    mode='pretrain_ae')
-            _, emb_neg, emb_rec, dec_syn = self.model(x_prime, 
-                    x_pos=None, 
-                    x_neg=x_neg,
-                    mode='gen_ae')
+        enc, emb_pos, dec = self.model(x, 
+                x_pos, 
+                x_neg=None, 
+                mode='pretrain_ae')
+        _, emb_neg, emb_rec, dec_syn = self.model(x_prime, 
+                x_pos=None, 
+                x_neg=x_neg,
+                mode='gen_ae')
 
         loss_rec = torch.mean(torch.abs(dec - x))
         loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
@@ -219,28 +203,21 @@ class Solver(object):
         x_mismatch, _, x_mismatch_neg = [cc(tensor) for tensor in data_mismatch]
 
         with torch.no_grad():
-            if self.config.add_gaussian:
-                emb = self.model(self.noise_adder(x), x_pos=None, x_neg=None, mode='dis_real')
-                _, emb_syn, dec_syn = self.model(self.noise_adder(x_prime), 
-                        x_pos=None, 
-                        x_neg=self.noise_adder(x_neg), 
-                        mode='dis_fake')
-                if self.config.use_mismatch:
-                    emb_neg = self.model(x=None, 
-                            x_pos=None, x_neg=self.noise_adder(x_mismatch_neg), mode='dis_mismatch') 
-            else:
-                emb = self.model(x, x_pos=None, x_neg=None, mode='dis_real')
-                _, emb_syn, dec_syn = self.model(x=x_prime, 
-                        x_pos=None, 
-                        x_neg=x_neg, 
-                        mode='dis_fake')
-                if self.config.use_mismatch:
-                    emb_neg = self.model(x=None, 
-                            x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
+            emb = self.model(x, x_pos=None, x_neg=None, mode='dis_real')
+            _, emb_syn, dec_syn = self.model(x=x_prime, 
+                    x_pos=None, 
+                    x_neg=x_neg, 
+                    mode='dis_fake')
+            if self.config.use_mismatch:
+                emb_neg = self.model(x=None, 
+                        x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
 
         # for R1 regularization
         x.requires_grad = True
         emb.requires_grad = True
+        if self.config.instance_noise:
+            x = self.noise_adder(x)
+            dec_syn = self.noise_adder(dec_syn)
         # input for the discriminator
         real_vals, real_cond_vals = self.discr(x, emb)
         fake_vals, fake_cond_vals = self.discr(dec_syn, emb_syn)

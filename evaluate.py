@@ -138,6 +138,7 @@ class Evaluater(object):
             embs = self.model.get_static_embeddings(data)
             all_embs = all_embs + embs.detach().cpu().numpy().tolist()
         all_embs = np.array(all_embs)
+        all_embs = all_embs / np.sqrt(np.sum(all_embs ** 2, axis=1, keepdims=True))
         print(all_embs.shape)
         # TSNE
         embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
@@ -174,6 +175,9 @@ class Evaluater(object):
             embs = self.model.get_static_embeddings(data)
             all_embs = all_embs + embs.detach().cpu().numpy().tolist()
         all_embs = np.array(all_embs)
+        norms = np.sqrt(np.sum(all_embs ** 2, axis=1, keepdims=True))
+        print(norms.mean())
+        all_embs = all_embs / norms 
         print(all_embs.shape)
         # TSNE
         embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
