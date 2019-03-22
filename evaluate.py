@@ -213,7 +213,7 @@ class Evaluater(object):
         dec = self.model.inference(x, x_cond)
         dec = dec.transpose(1, 2).squeeze(0)
         dec = dec.detach().cpu().numpy()
-        wav_data = spectrogram2wav(dec)
+        wav_data = melspectrogram2wav(dec)
         #write(output_path, rate=self.config.sample_rate, data=wav_data)
         return wav_data, dec
 
