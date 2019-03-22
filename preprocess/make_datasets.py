@@ -10,6 +10,30 @@ import numpy as np
 import json
 from tacotron.utils import get_spectrograms
 
+def _range_normalizer(x, margin):
+    min_x = np.min(x, axis=0)
+    max_x = np.max(x, axis=0)
+    a = margin * (2.0 / (max_x - min_x))
+    b = margin * (-2.0 * min_x / (max_x - min_x) - 1.0)
+    return a, b
+
+class Normalizer(object):
+    def __init__(self):
+        pass
+
+    def register(self, data):
+        a, b = _range_normalizer(data)
+        self.a, self.b = a, b
+
+    def normalize(self, data):
+        out = np.clip(data * a + b, 1.0, -1.0)
+        return out
+
+    def denormalize(self, data):
+        out = (data - b) / a
+        out = np.clip(data * a + b, 1.0, -1.0)
+        return out
+
 def read_speaker_info(speaker_info_path):
     speaker_ids = []
     with open(speaker_info_path, 'r') as f:
@@ -37,13 +61,6 @@ def spec_feature_extraction(wav_file):
     mel, mag = get_spectrograms(wav_file)
     return mel, mag
 
-def my_std(data, mean):
-    square_sum = 0.
-    for val in data:
-        square_sum += (val - mean) ** 2
-    std = np.sqrt(square_sum / len(data))
-    return std 
-
 if __name__ == '__main__':
     data_dir = sys.argv[1]
     speaker_info_path = sys.argv[2]
@@ -51,6 +68,7 @@ if __name__ == '__main__':
     test_speakers = int(sys.argv[4])
     test_proportion = float(sys.argv[5])
     sample_rate = int(sys.argv[6])
+    margin = float(sys.argv[7])
 
     speaker_ids = read_speaker_info(speaker_info_path)
     random.shuffle(speaker_ids)
@@ -92,7 +110,18 @@ if __name__ == '__main__':
                 print(f'processing {i} files')
             filename = path.strip().split('/')[-1]
             mel, mag = spec_feature_extraction(path)
-            data[filename] = mag 
+            data[filename] = mel
+            if dset == 'train':
+                all_train_data.append(mel)
+        if dset == 'train':
+            all_train_data = np.concatenate(all_train_data)
+            a, b = _range_normalizer(all_train_data, margin=margin)
+            attr = {'a': a, 'b': b}
+            with open(os.path.join(output_dir, 'attr.pkl'), 'wb') as f:
+                pickle.dump(attr, f)
+        for key, val in data.item():
+            val = np.clip(val * attr['a'] + attr['b'], 1.0, -1.0)
+            data[key] = val
         with open(output_path, 'wb') as f:
             pickle.dump(data, f)
 

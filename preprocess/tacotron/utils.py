@@ -17,6 +17,12 @@ import matplotlib.pyplot as plt
 from scipy import signal
 import os
 
+def _mel_to_linear_matrix(sr, n_fft, n_mels):
+    m = librosa.filters.mel(sr, n_fft, n_mels)
+    m_t = np.transpose(m)
+    p = np.matmul(m, m_t)
+    d = [1.0 / x if np.abs(x) > 1.0e-8 else x for x in np.sum(p, axis=0)]
+    return np.matmul(m_t, np.diag(d))
 
 def get_spectrograms(fpath):
     '''Returns normalized log(melspectrogram) and log(magnitude) from `sound_file`.
@@ -80,6 +86,29 @@ def get_spectrograms(fpath):
 
     return mel, mag
 
+def melspectrogram2wav(mel):
+    '''# Generate wave file from spectrogram'''
+    # transpose
+    mel = mel.T
+
+    # de-noramlize
+    mel = (np.clip(mel, 0, 1) * hp.max_db) - hp.max_db + hp.ref_db
+
+    # to amplitude
+    mel = np.power(10.0, mel * 0.05)
+    m = _mel_to_linear_matrix(hp.sr, hp.n_fft, hp.n_mels)
+    mag = np.dot(m, mel)
+
+    # wav reconstruction
+    wav = griffin_lim(mag)
+
+    # de-preemphasis
+    wav = signal.lfilter([1], [1, -hp.preemphasis], wav)
+
+    # trim
+    wav, _ = librosa.effects.trim(wav)
+
+    return wav.astype(np.float32)
 
 def spectrogram2wav(mag):
     '''# Generate wave file from spectrogram'''
