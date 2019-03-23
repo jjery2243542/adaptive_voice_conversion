@@ -216,7 +216,6 @@ class StaticEncoder(nn.Module):
         # dense blocks
         out = self.dense_blocks(out)
         out = self.output_layer(out)
-        out = torch.tanh(out)
         return out
 
 class DynamicEncoder(nn.Module):

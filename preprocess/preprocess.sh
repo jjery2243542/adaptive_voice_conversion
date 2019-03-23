@@ -1,6 +1,6 @@
 stage=1
 #segment_size=16384
-segment_size=64
+segment_size=128
 data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/sr_24000_mel/
 raw_data_dir=/groups/jjery2243542/data/raw/VCTK-Corpus
 n_out_speakers=20
@@ -14,10 +14,14 @@ if [ $stage -le 0 ]; then
 fi
 
 if [ $stage -le 1 ]; then
+    python3 reduce_dataset.py $data_dir/train.pkl $data_dir/train_$segment_size.pkl $segment_size
+fi
+
+if [ $stage -le 2 ]; then
     # sample training samples
     python3 sample_single_segments.py $data_dir/train.pkl $data_dir/train_samples_$segment_size.json $training_samples $segment_size
 fi
-if [ $stage -le 2 ]; then
+if [ $stage -le 3 ]; then
     # sample testing samples
     python3 sample_single_segments.py $data_dir/in_test.pkl $data_dir/in_test_samples_$segment_size.json $testing_samples $segment_size
     python3 sample_single_segments.py $data_dir/out_test.pkl $data_dir/out_test_samples_$segment_size.json $testing_samples $segment_size
