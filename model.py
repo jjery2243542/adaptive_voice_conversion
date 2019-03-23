@@ -180,10 +180,10 @@ class StaticEncoder(nn.Module):
         out = inp
         # convolution blocks
         for l in range(self.n_conv_blocks):
-            y = pad_layer(out, self.first_conv_layers[l], pad_type='constant')
+            y = pad_layer(out, self.first_conv_layers[l])
             y = self.act(y)
             y = self.dropout_layer(y)
-            y = pad_layer(y, self.second_conv_layers[l], pad_type='constant')
+            y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             y = self.dropout_layer(y)
             if self.subsample[l] > 1:
@@ -205,9 +205,9 @@ class StaticEncoder(nn.Module):
         return out
 
     def forward(self, x):
-        out = conv_bank(x, self.conv_bank, act=self.act, pad_type='constant')
+        out = conv_bank(x, self.conv_bank, act=self.act)
         # dimension reduction layer
-        out = pad_layer(out, self.in_conv_layer, pad_type='constant')
+        out = pad_layer(out, self.in_conv_layer)
         out = self.act(out)
         # conv blocks
         out = self.conv_blocks(out)
@@ -216,6 +216,7 @@ class StaticEncoder(nn.Module):
         # dense blocks
         out = self.dense_blocks(out)
         out = self.output_layer(out)
+        out = torch.tanh(out)
         return out
 
 class DynamicEncoder(nn.Module):
@@ -408,17 +409,17 @@ class AE(nn.Module):
                 n_dense_blocks=dec_n_dense_blocks, 
                 act=act, sn=sn)
 
-    def forward(self, x, x_pos, x_neg, mode):
+    def forward(self, x, x_neg, mode):
         # for autoencoder pretraining
         if mode == 'pretrain_ae': 
             # static operation
-            emb_pos = self.static_encoder(x_pos)
+            emb = self.static_encoder(x)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             # decode
             d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec = self.decoder(enc + d_noise, emb_pos)
-            return enc, emb_pos, dec
+            dec = self.decoder(enc + d_noise, emb)
+            return enc, emb, dec
         elif mode == 'gen_ae':
             with torch.no_grad():
                 # static operation
@@ -464,7 +465,7 @@ class Discriminator(nn.Module):
             c_in, c_h, c_cond, 
             kernel_size, n_conv_blocks,
             subsample, 
-            n_dense_layers, d_h, act, sn, ins_norm):
+            n_dense_layers, d_h, act, sn, ins_norm, dropout_rate):
         super(Discriminator, self).__init__()
         # input_size is a tuple
         self.n_conv_blocks = n_conv_blocks
@@ -476,11 +477,10 @@ class Discriminator(nn.Module):
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
         self.first_conv_layers = nn.ModuleList(
-                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for _ in range(self.n_conv_blocks)])
+                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for sub in subsample])
         self.second_conv_layers = nn.ModuleList(
                 [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
-        if self.ins_norm:
-            self.norm_layer = nn.InstanceNorm2d(c_h)
+        self.norm_layer = nn.InstanceNorm2d(c_h)
         # to process all frequency
         dense_input_size = input_size 
         for l, sub in zip(range(n_conv_blocks), self.subsample):
@@ -493,13 +493,17 @@ class Discriminator(nn.Module):
                 [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
                 [f(nn.Linear(d_h, 1))])
         self.linear_cond = f(nn.Linear(c_cond, d_h, bias=False))
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def conv_blocks(self, inp):
-        out = self.act(pad_layer_2d(inp, self.in_conv_layer, pad_type='constant'))
+        out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
-            y = self.act(pad_layer_2d(out, self.first_conv_layers[l], pad_type='constant'))
-            y = self.act(pad_layer_2d(y, self.second_conv_layers[l], pad_type='constant'))
-            y = self.norm_layer(y)
+            y = self.act(pad_layer_2d(y, self.first_conv_layers[l]))
+            y = self.dropout_layer(y)
+            y = self.act(pad_layer_2d(y, self.second_conv_layers[l]))
+            y = self.dropout_layer(y)
+            if self.ins_norm:
+                y = self.norm_layer(y)
             out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
         out = self.out_conv_layer(out).squeeze(2)
         out = self.act(out)
@@ -511,6 +515,7 @@ class Discriminator(nn.Module):
         for l in range(self.n_dense_layers - 1):
             h = self.dense_layers[l](h)
             h = self.act(h)
+            h = self.dropout_layer(h)
         out = self.dense_layers[-1](h)
         return out, h
 

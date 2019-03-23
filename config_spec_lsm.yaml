@@ -4,7 +4,7 @@ d_c_h: 256
 c_bank: 128
 c_latent: 128
 c_cond: 256
-kernel_size: 5
+kernel_size: 3
 bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
@@ -20,13 +20,14 @@ upsample: [2, 1, 2, 1, 2, 1]
 gen_act: 'relu'
 dis_act: 'lrelu'
 dropout_rate: 0.5
-dis_c_h: 64
-dis_kernel_size: 5
+dis_c_h: 128
+dis_kernel_size: 3
 dis_n_conv_blocks: 5
 dis_subsample: [2, 1, 2, 1, 2]
 dis_n_dense_layers: 3
 dis_d_h: 1024
-dis_ins_norm: True
+dis_ins_norm: False
+dis_dropout_rate: 0.3
 segment_size: 64
 frame_size: 1
 batch_size: 8
@@ -45,7 +46,7 @@ lambda_kl: 0.01
 lambda_gp: 10 
 weight_decay: 0.0001
 instance_noise: True
-gaussian_std: 0.25
+gaussian_std: 0.1
 grad_norm: 1
 ae_steps: 1
 dis_steps: 1
