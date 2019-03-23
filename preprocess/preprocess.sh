@@ -15,7 +15,7 @@ fi
 
 if [ $stage -le 1 ]; then
     # sample training samples
-    python3 sample_single_segments.py $data_dir/train.pkl $data_dir/train_$segment_size.json $training_samples $segment_size
+    python3 sample_single_segments.py $data_dir/train.pkl $data_dir/train_samples_$segment_size.json $training_samples $segment_size
 fi
 if [ $stage -le 2 ]; then
     # sample testing samples
