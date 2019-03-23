@@ -352,7 +352,7 @@ class Decoder(nn.Module):
             y = append_cond(y, self.dense_affine_layers[l*2+1](cond))
             out = y + out
         out = pad_layer(out, self.out_conv_layer)
-        out = torch.tanh(out)
+        out = torch.sigmoid(out)
         return out
 
 class AE(nn.Module):
