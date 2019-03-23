@@ -486,8 +486,8 @@ class Discriminator(nn.Module):
         for l, sub in zip(range(n_conv_blocks), self.subsample):
             dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / sub))
         self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
-                kernel_size=(dense_input_size[0], kernel_size), \
-                stride=(1, 1), padding=(0, kernel_size // 2)))
+                kernel_size=(dense_input_size[0], 1), \
+                stride=(1, 1)))
         dense_input_size = dense_input_size[1] * d_h
         self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size, d_h))] + 
                 [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
@@ -498,7 +498,7 @@ class Discriminator(nn.Module):
     def conv_blocks(self, inp):
         out = self.act(pad_layer_2d(inp, self.in_conv_layer))
         for l in range(self.n_conv_blocks):
-            y = self.act(pad_layer_2d(y, self.first_conv_layers[l]))
+            y = self.act(pad_layer_2d(out, self.first_conv_layers[l]))
             y = self.dropout_layer(y)
             y = self.act(pad_layer_2d(y, self.second_conv_layers[l]))
             y = self.dropout_layer(y)

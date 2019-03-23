@@ -17,10 +17,9 @@ class CollateFn(object):
         return out 
 
     def __call__(self, l):
-        segment = self.make_frames(torch.from_numpy(np.array([batch[0] for batch in l])))
-        segment_pos = self.make_frames(torch.from_numpy(np.array([batch[1] for batch in l])))
-        segment_neg = self.make_frames(torch.from_numpy(np.array([batch[2] for batch in l])))
-        return segment, segment_pos, segment_neg
+        data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1)
+        segment, segment_neg = [self.make_frames(element) for element in data_tensor]
+        return segment, segment_neg
 
 def get_data_loader(dataset, batch_size, frame_size, shuffle=True, num_workers=4, drop_last=False):
     _collate_fn = CollateFn(frame_size=frame_size) 
@@ -50,12 +49,10 @@ class PickleDataset(Dataset):
         self.segment_size = segment_size
 
     def __getitem__(self, ind):
-        utt_id, t1, t2, neg_utt_id, t_neg = self.indexes[ind]
-        segment = self.data[utt_id][t1:t1 + self.segment_size]
-        segment_pos = self.data[utt_id][t2:t2 + self.segment_size]
-        # negtive segment twice long
-        segment_neg = self.data[neg_utt_id][t_neg:t_neg + self.segment_size * 2]
-        return segment, segment_pos, segment_neg
+        utt_id, t, neg_utt_id, t_neg = self.indexes[ind]
+        segment = self.data[utt_id][t:t + self.segment_size]
+        segment_neg = self.data[neg_utt_id][t_neg:t_neg + self.segment_size]
+        return segment, segment_neg
 
     def __len__(self):
         return len(self.indexes)

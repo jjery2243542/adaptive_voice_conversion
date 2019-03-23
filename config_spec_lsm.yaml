@@ -1,9 +1,9 @@
-c_in: 1025
-s_c_h: 256
-d_c_h: 256
+c_in: 512
+s_c_h: 128
+d_c_h: 128
 c_bank: 128
 c_latent: 128
-c_cond: 256
+c_cond: 128
 kernel_size: 3
 bank_size: 8 
 bank_scale: 1
@@ -23,9 +23,9 @@ dropout_rate: 0.5
 dis_c_h: 128
 dis_kernel_size: 3
 dis_n_conv_blocks: 5
-dis_subsample: [2, 1, 2, 1, 2]
-dis_n_dense_layers: 3
-dis_d_h: 1024
+dis_subsample: [2, 2, 2, 2, 2]
+dis_n_dense_layers: 2
+dis_d_h: 512
 dis_ins_norm: False
 dis_dropout_rate: 0.3
 segment_size: 64

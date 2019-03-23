@@ -117,7 +117,8 @@ class Solver(object):
             n_conv_blocks=self.config.dis_n_conv_blocks, 
             n_dense_layers=self.config.dis_n_dense_layers, 
             d_h=self.config.dis_d_h, act=self.config.dis_act, 
-            sn=self.config.sn, ins_norm=self.config.dis_ins_norm))
+            sn=self.config.sn, ins_norm=self.config.dis_ins_norm,
+            dropout_rate=self.config.dis_dropout_rate))
         print(self.discr)
         self.ae_opt = torch.optim.Adam(self.model.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
@@ -141,13 +142,11 @@ class Solver(object):
         return loss_rec
 
     def ae_pretrain_step(self, data, lambda_rec):
-        x, x_pos, x_neg = [cc(tensor) for tensor in data]
-        enc, emb_pos, dec = self.model(x, 
-                x_pos, 
-                x_neg,
-                mode='pretrain_ae')
+        x, x_neg = [cc(tensor) for tensor in data]
+        enc, emb, dec = self.model(x, x_neg, mode='pretrain_ae')
 
-        loss_rec = self.weighted_l1_loss(dec, x)
+        criterion = nn.L1Loss()
+        loss_rec = criterion(dec, x)
         loss_kl = torch.mean(enc ** 2)
         loss = lambda_rec * loss_rec + \
                 self.config.lambda_kl * loss_kl
@@ -161,19 +160,14 @@ class Solver(object):
         return meta
 
     def ae_gen_step(self, data_ae, data_gen, lambda_dis):
-        x, x_pos, _ = [cc(tensor) for tensor in data_ae]
-        x_prime, _, x_neg = [cc(tensor) for tensor in data_ae]
-        enc, emb_pos, dec = self.model(x, 
-                x_pos, 
-                x_neg=None, 
-                mode='pretrain_ae')
-        _, emb_neg, emb_rec, dec_syn = self.model(x_prime, 
-                x_pos=None, 
-                x_neg=x_neg,
-                mode='gen_ae')
+        x, _ = [cc(tensor) for tensor in data_ae]
+        x_prime, x_neg = [cc(tensor) for tensor in data_gen]
+        enc, emb, dec = self.model(x, x_neg=None, mode='pretrain_ae')
+        _, emb_neg, emb_rec, dec_syn = self.model(x_prime, x_neg=x_neg, mode='gen_ae')
 
-        loss_rec = torch.mean(torch.abs(dec - x))
-        loss_srec = torch.mean(torch.abs(emb_neg - emb_rec))
+        criterion = nn.L1Loss()
+        loss_rec = criterion(dec, x)
+        loss_srec = criterion(emb_neg, emb_rec)
         fake_vals, cond_vals = self.discr(dec_syn, emb_neg.detach())
         loss_dis = -torch.mean(fake_vals)
 
@@ -198,19 +192,15 @@ class Solver(object):
         return meta
 
     def dis_step(self, data_real, data_fake, data_mismatch):
-        x, _, _ = [cc(tensor) for tensor in data_real]
-        x_prime, _, x_neg = [cc(tensor) for tensor in data_fake]
-        x_mismatch, _, x_mismatch_neg = [cc(tensor) for tensor in data_mismatch]
+        x, _ = [cc(tensor) for tensor in data_real]
+        x_prime, x_neg = [cc(tensor) for tensor in data_fake]
+        x_mismatch, x_mismatch_neg = [cc(tensor) for tensor in data_mismatch]
 
         with torch.no_grad():
-            emb = self.model(x, x_pos=None, x_neg=None, mode='dis_real')
-            _, emb_syn, dec_syn = self.model(x=x_prime, 
-                    x_pos=None, 
-                    x_neg=x_neg, 
-                    mode='dis_fake')
+            emb = self.model(x, x_neg=None, mode='dis_real')
+            _, emb_syn, dec_syn = self.model(x=x_prime, x_neg=x_neg, mode='dis_fake')
             if self.config.use_mismatch:
-                emb_neg = self.model(x=None, 
-                        x_pos=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
+                emb_neg = self.model(x=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
 
         # for R1 regularization
         x.requires_grad = True
@@ -233,7 +223,7 @@ class Solver(object):
             loss_dis = loss_real + loss_fake
         loss = loss_dis
         if self.config.lambda_gp > 0:
-            loss_gp = compute_grad(real_vals, x)
+            loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
             loss += loss_gp
 
         self.dis_opt.zero_grad()
