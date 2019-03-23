@@ -53,8 +53,8 @@ ae_steps: 1
 dis_steps: 1
 dis_sched_iters: 50000
 rec_sched_iters: 30000
-noise_sched_iters: 10
-sample_rate: 22050
+noise_sched_iters: 100000
+sample_rate: 24000
 sn: True
 use_dummy: False
 use_mismatch: False

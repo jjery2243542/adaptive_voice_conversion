@@ -38,9 +38,6 @@ class Solver(object):
             self.load_model(args.load_opt, args.load_dis)
 
         self.ema = EMA(mu=self.config.ema_weight)
-        for name, param in self.model.decoder.named_parameters():
-            if param.requires_grad:
-                self.ema.register(name, param.data)
 
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
@@ -274,6 +271,9 @@ class Solver(object):
         return
 
     def ae_gen_train(self, n_iterations):
+        for name, param in self.model.decoder.named_parameters():
+            if param.requires_grad:
+                self.ema.register(name, param.data)
         for iteration in range(n_iterations):
             # calculate linear increasing lambda
             if iteration >= self.config.dis_sched_iters:

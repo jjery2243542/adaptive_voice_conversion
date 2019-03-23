@@ -111,17 +111,17 @@ if __name__ == '__main__':
             filename = path.strip().split('/')[-1]
             mel, mag = spec_feature_extraction(path)
             data[filename] = mel
-            if dset == 'train':
-                all_train_data.append(mel)
-        if dset == 'train':
-            all_train_data = np.concatenate(all_train_data)
-            a, b = _range_normalizer(all_train_data, margin=margin)
-            attr = {'a': a, 'b': b}
-            with open(os.path.join(output_dir, 'attr.pkl'), 'wb') as f:
-                pickle.dump(attr, f)
-        for key, val in data.item():
-            val = np.clip(val * attr['a'] + attr['b'], 1.0, -1.0)
-            data[key] = val
+        #    if dset == 'train':
+        #        all_train_data.append(mel)
+        #if dset == 'train':
+        #    all_train_data = np.concatenate(all_train_data)
+        #    a, b = _range_normalizer(all_train_data, margin=margin)
+        #    attr = {'a': a, 'b': b}
+        #    with open(os.path.join(output_dir, 'attr.pkl'), 'wb') as f:
+        #        pickle.dump(attr, f)
+        #for key, val in data.item():
+        #    val = np.clip(val * attr['a'] + attr['b'], 1.0, -1.0)
+        #    data[key] = val
         with open(output_path, 'wb') as f:
             pickle.dump(data, f)
 

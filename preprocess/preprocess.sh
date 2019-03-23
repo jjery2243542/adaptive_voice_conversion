@@ -1,8 +1,9 @@
-stage=1
+stage=0
 #segment_size=16384
 segment_size=128
-data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/sr_24000_mel/
+data_dir=/groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/sr_24000_mel_raw/
 raw_data_dir=/groups/jjery2243542/data/raw/VCTK-Corpus
+margin=0.8
 n_out_speakers=20
 test_prop=0.1
 sample_rate=24000
@@ -10,7 +11,7 @@ training_samples=10000000
 testing_samples=10000
 
 if [ $stage -le 0 ]; then
-    python3 make_datasets.py $raw_data_dir/wav48 $raw_data_dir/speaker-info.txt $data_dir $n_out_speakers $test_prop $sample_rate
+    python3 make_datasets.py $raw_data_dir/wav48 $raw_data_dir/speaker-info.txt $data_dir $n_out_speakers $test_prop $sample_rate $margin
 fi
 
 if [ $stage -le 1 ]; then
