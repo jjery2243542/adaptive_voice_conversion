@@ -223,7 +223,7 @@ class Solver(object):
             loss_dis = loss_real + loss_fake
         loss = loss_dis
         if self.config.lambda_gp > 0:
-            loss_gp = compute_grad(real_vals, x) + compute_grad(real_vals, emb)
+            loss_gp = compute_grad(real_vals, x)
             loss += loss_gp
 
         self.dis_opt.zero_grad()

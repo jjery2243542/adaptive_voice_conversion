@@ -4,7 +4,7 @@ d_c_h: 128
 c_bank: 128
 c_latent: 128
 c_cond: 128
-kernel_size: 3
+kernel_size: 7
 bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
@@ -28,7 +28,7 @@ dis_n_dense_layers: 2
 dis_d_h: 512
 dis_ins_norm: False
 dis_dropout_rate: 0.3
-segment_size: 64
+segment_size: 128
 frame_size: 1
 batch_size: 8
 shuffle: True
