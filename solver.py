@@ -133,7 +133,7 @@ class Solver(object):
         print(self.ae_opt)
         print(self.gen_opt)
         print(self.dis_opt)
-        self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
+        self.noise_adder = NoiseAdder(0, self.config.gaussian_std, self.config.noise_sched_iters)
         return
 
     def weighted_l1_loss(self, dec, x):

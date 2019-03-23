@@ -6,14 +6,21 @@ import torch.nn as nn
 import torch.nn.init as init
 
 class NoiseAdder(object):
-    def __init__(self, mean, std):
+    def __init__(self, mean, std, decay_steps):
         self.mean = mean
         self.std = std
+        self.decay_steps = decay_steps
+        self.n_steps = 0
 
     def __call__(self, tensor):
-        noise = tensor.new(*tensor.size()).normal_(self.mean, self.std)
-        return tensor + noise
-
+        if self.n_steps < self.decay_steps: 
+            self.n_steps += 1
+            std = self.std * (1 - self.n_steps / self.decay_steps)
+            noise = tensor.new(*tensor.size()).normal_(self.mean, std)
+            ret = tensor + noise
+        else:
+            ret = tensor
+        return ret
 
 def sample_gumbel(size, eps=1e-20):
     u = torch.rand(size)
