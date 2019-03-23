@@ -25,7 +25,7 @@ mpl.use('Agg')
 from matplotlib import pyplot as plt
 from scipy.io.wavfile import write
 import random
-from preprocess.tacotron.utils import spectrogram2wav
+from preprocess.tacotron.utils import melspectrogram2wav
 
 class Evaluater(object):
     def __init__(self, config, args):
@@ -49,6 +49,8 @@ class Evaluater(object):
         self.speaker2gender = self.read_speaker_gender(self.args.speaker_info_path)
         # sampled n speakers for evaluation
         self.sample_n_speakers(self.args.n_speakers)
+        with open(os.path.join(self.args.data_dir, 'attr.pkl'), 'rb') as f:
+            self.attr = pickle.load(f)
 
     def load_model(self):
         print(f'Load model from {self.args.load_model_path}')
@@ -158,12 +160,12 @@ class Evaluater(object):
     def plot_segment_embeddings(self, output_path):
         # filter the samples by speakers sampled
         # hack code 
-        small_indexes = [index for index in self.indexes if index[3][:len('p000')] in self.sampled_speakers]
+        small_indexes = [index for index in self.indexes if index[2][:len('p000')] in self.sampled_speakers]
         random.shuffle(small_indexes)
         small_indexes = small_indexes[:self.args.max_samples]
         # generate the tensor and dataloader for evaluation
-        tensor = [self.pkl_data[key][t:t + self.config.segment_size] for _, _, _, key, t in small_indexes]
-        speakers = [key[:len('p000')] for _, _, _, key, _  in small_indexes]
+        tensor = [self.pkl_data[key][t:t + self.config.segment_size] for _, _, key, t in small_indexes]
+        speakers = [key[:len('p000')] for _, _, key, _  in small_indexes]
         # add the dimension for channel
         tensor = self.seg_make_frames(torch.from_numpy(np.array(tensor)))
         dataset = TensorDataset(tensor)
@@ -213,9 +215,15 @@ class Evaluater(object):
         dec = self.model.inference(x, x_cond)
         dec = dec.transpose(1, 2).squeeze(0)
         dec = dec.detach().cpu().numpy()
+        dec = self.denormalize(dec)
         wav_data = melspectrogram2wav(dec)
         #write(output_path, rate=self.config.sample_rate, data=wav_data)
         return wav_data, dec
+
+    def denormalize(self, x):
+        a, b = self.attr['a'], self.attr['b']
+        ret = (x - b) / a
+        return ret
 
     def write_wav_to_file(self, wav_data, output_path):
         write(output_path, rate=self.config.sample_rate, data=wav_data)
@@ -223,7 +231,7 @@ class Evaluater(object):
 
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, _, cond_utt, _ = self.indexes[6]
+        content_utt, _, cond_utt, _ = self.indexes[2]
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
