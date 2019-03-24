@@ -5,7 +5,7 @@ c_bank: 128
 c_latent: 128
 c_cond: 128
 s_kernel_size: 3
-d_kernel_size: 7
+d_kernel_size: 5
 bank_size: 8 
 bank_scale: 1
 s_enc_n_conv_blocks: 6
@@ -27,7 +27,7 @@ dis_n_conv_blocks: 5
 dis_subsample: [2, 2, 2, 2, 2]
 dis_n_dense_layers: 2
 dis_d_h: 512
-dis_ins_norm: False
+dis_ins_norm: True
 dis_dropout_rate: 0.3
 segment_size: 128
 frame_size: 1
@@ -51,7 +51,7 @@ gaussian_std: 0.15
 grad_norm: 1
 ae_steps: 1
 dis_steps: 1
-dis_sched_iters: 50000
+dis_sched_iters: 30000
 rec_sched_iters: 30000
 noise_sched_iters: 100000
 sample_rate: 24000

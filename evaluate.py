@@ -78,7 +78,8 @@ class Evaluater(object):
                 c_bank=self.config.c_bank,
                 bank_size=self.config.bank_size,
                 bank_scale=self.config.bank_scale,
-                kernel_size=self.config.kernel_size,
+                s_kernel_size=self.config.s_kernel_size,
+                d_kernel_size=self.config.d_kernel_size,
                 s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
                 s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
                 d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
@@ -94,7 +95,7 @@ class Evaluater(object):
                 use_dummy=self.config.use_dummy, sn=self.config.sn))
         print(self.model)
         self.model.eval()
-        self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
+        self.noise_adder = NoiseAdder(0, self.config.gaussian_std, self.config.noise_sched_iters)
         return
 
     def sample_n_speakers(self, n_speakers):
@@ -140,7 +141,9 @@ class Evaluater(object):
             embs = self.model.get_static_embeddings(data)
             all_embs = all_embs + embs.detach().cpu().numpy().tolist()
         all_embs = np.array(all_embs)
-        all_embs = all_embs / np.sqrt(np.sum(all_embs ** 2, axis=1, keepdims=True))
+        norms = np.sqrt(np.sum(all_embs ** 2, axis=1, keepdims=True))
+        print(norms.mean())
+        all_embs = all_embs / norms 
         print(all_embs.shape)
         # TSNE
         embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
@@ -215,6 +218,7 @@ class Evaluater(object):
         dec = self.model.inference(x, x_cond)
         dec = dec.transpose(1, 2).squeeze(0)
         dec = dec.detach().cpu().numpy()
+        print(x.mean(), dec.mean())
         dec = self.denormalize(dec)
         wav_data = melspectrogram2wav(dec)
         #write(output_path, rate=self.config.sample_rate, data=wav_data)
@@ -231,7 +235,7 @@ class Evaluater(object):
 
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, cond_utt, _ = self.indexes[2]
+        content_utt, _, cond_utt, _ = self.indexes[1]
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()

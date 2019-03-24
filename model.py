@@ -352,7 +352,7 @@ class Decoder(nn.Module):
             y = append_cond(y, self.dense_affine_layers[l*2+1](cond))
             out = y + out
         out = pad_layer(out, self.out_conv_layer)
-        out = torch.sigmoid(out)
+        out = torch.tanh(out)
         return out
 
 class AE(nn.Module):
@@ -506,6 +506,7 @@ class Discriminator(nn.Module):
             out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
         out = self.out_conv_layer(out).squeeze(2)
         out = self.act(out)
+        out = self.dropout_layer(out)
         out = out.view(out.size(0), out.size(1) * out.size(2))
         return out
 
