@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, Discriminator, compute_grad
+from model import AE, Decoder, Discriminator, compute_grad
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
@@ -42,6 +42,7 @@ class Solver(object):
     def save_model(self, iteration, stage):
         # save model and discriminator and their optimizer
         torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
+        torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.gen.opt')
         torch.save(self.ae_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
         torch.save(self.discr.state_dict(), f'{self.args.store_model_path}.{stage}.discr')
         torch.save(self.dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.discr.opt')
@@ -60,13 +61,13 @@ class Solver(object):
             self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
         if load_opt:
             self.ae_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
+            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.gen.opt'))
         if load_dis and load_opt:
             self.dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
         return
 
     def get_data_loaders(self):
         data_dir = self.args.data_dir
-
         self.train_dataset = PickleDataset(os.path.join(data_dir, f'{self.args.train_set}.pkl'), 
                 os.path.join(data_dir, self.args.train_index_file), 
                 segment_size=self.config.segment_size)
@@ -118,10 +119,13 @@ class Solver(object):
             sn=self.config.sn, ins_norm=self.config.dis_ins_norm,
             dropout_rate=self.config.dis_dropout_rate))
         print(self.discr)
-        self.ae_opt = torch.optim.Adam(self.model.parameters(), 
+        ae_params = list(self.model.static_encoder.parameters()) + \
+                list(self.model.dynamic_encoder.parameters()) + \
+                list(self.model.decoder.parameters())
+        self.ae_opt = torch.optim.Adam(ae_params, 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)
-        self.gen_opt = torch.optim.Adam(self.model.decoder.parameters(), 
+        self.gen_opt = torch.optim.Adam(self.model.generator.parameters(), 
                 lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
                 amsgrad=self.config.amsgrad, weight_decay=self.config.weight_decay)
         self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
@@ -132,12 +136,6 @@ class Solver(object):
         print(self.dis_opt)
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std, self.config.noise_sched_iters)
         return
-
-    def weighted_l1_loss(self, dec, x):
-        criterion = nn.L1Loss()
-        n_priority_freq = int(3000 / (self.config.sample_rate * 0.5) * self.config.c_in)
-        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
-        return loss_rec
 
     def ae_pretrain_step(self, data, lambda_rec):
         x, x_neg = [cc(tensor) for tensor in data]
@@ -157,32 +155,27 @@ class Solver(object):
                 'grad_norm': grad_norm}
         return meta
 
-    def ae_gen_step(self, data_ae, data_gen, lambda_dis):
-        x, _ = [cc(tensor) for tensor in data_ae]
-        x_prime, x_neg = [cc(tensor) for tensor in data_gen]
-        enc, emb, dec = self.model(x, x_neg=None, mode='pretrain_ae')
-        _, emb_neg, emb_rec, dec_syn = self.model(x_prime, x_neg=x_neg, mode='gen_ae')
+    def ae_gen_step(self, data):
+        x, x_neg = [cc(tensor) for tensor in data]
+        enc, emb_neg, emb_rec, dec_syn = self.model(x=x, x_neg=x_neg, mode='gen_ae')
 
         criterion = nn.L1Loss()
-        loss_rec = criterion(dec, x)
         loss_srec = criterion(emb_neg, emb_rec)
         fake_vals, cond_vals = self.discr(dec_syn, emb_neg.detach())
         loss_dis = -torch.mean(fake_vals)
 
-        loss = self.config.final_lambda_rec * loss_rec + \
-                self.config.lambda_srec * loss_srec + \
-                lambda_dis * loss_dis 
+        loss = self.config.lambda_srec * loss_srec + self.config.lambda_dis * loss_dis 
 
         self.gen_opt.zero_grad()
         loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.generator.parameters(), \
+                max_norm=self.config.grad_norm)
         self.gen_opt.step()
-        for name, param in self.model.decoder.named_parameters():
+        for name, param in self.model.generator.named_parameters():
             if param.requires_grad:
                 param.data = self.ema(name, param.data)
 
-        meta = {'loss_rec': loss_rec.item(),
-                'loss_srec': loss_srec.item(),
+        meta = {'loss_srec': loss_srec.item(),
                 'loss_dis': loss_dis.item(),
                 'loss': loss.item(),
                 'cond_val': torch.mean(cond_vals).item(),
@@ -198,11 +191,10 @@ class Solver(object):
             emb = self.model(x, x_neg=None, mode='dis_real')
             _, emb_syn, dec_syn = self.model(x=x_prime, x_neg=x_neg, mode='dis_fake')
             if self.config.use_mismatch:
-                emb_neg = self.model(x=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
+                emb_mismatch_neg = self.model(x=None, x_neg=x_mismatch_neg, mode='dis_mismatch')
 
         # for R1 regularization
         x.requires_grad = True
-        emb.requires_grad = True
         if self.config.instance_noise:
             x = self.noise_adder(x)
             dec_syn = self.noise_adder(dec_syn)
@@ -214,7 +206,7 @@ class Solver(object):
         loss_fake = torch.mean(F.relu(1.0 + fake_vals))
 
         if self.config.use_mismatch:
-            mismatch_vals, mismatch_cond_vals = self.discr(x_mismatch, emb_neg)
+            mismatch_vals, mismatch_cond_vals = self.discr(x_mismatch, emb_mismatch_neg)
             loss_mismatch = torch.mean(F.relu(1.0 + mismatch_vals))
             loss_dis = loss_real + (loss_fake + loss_mismatch) / 2
         else:
@@ -222,7 +214,7 @@ class Solver(object):
         loss = loss_dis
         if self.config.lambda_gp > 0:
             loss_gp = compute_grad(real_vals, x)
-            loss += loss_gp
+            loss += self.config.lambda_gp * loss_gp
 
         self.dis_opt.zero_grad()
         loss.backward()
@@ -271,19 +263,14 @@ class Solver(object):
         return
 
     def ae_gen_train(self, n_iterations):
-        for name, param in self.model.decoder.named_parameters():
+        for name, param in self.model.generator.named_parameters():
             if param.requires_grad:
                 self.ema.register(name, param.data)
         for iteration in range(n_iterations):
-            # calculate linear increasing lambda
-            if iteration >= self.config.dis_sched_iters:
-                lambda_dis = self.config.lambda_dis
-            else:
-                lambda_dis = self.config.lambda_dis * (iteration + 1) / self.config.dis_sched_iters
             # AE step
             for ae_step in range(self.config.ae_steps):
-                data_ae, data_gen = next(self.train_iter), next(self.train_iter)
-                gen_meta = self.ae_gen_step(data_ae, data_gen, lambda_dis=lambda_dis)
+                data = next(self.train_iter)
+                gen_meta = self.ae_gen_step(data)
                 # add to logger
                 if iteration % self.args.summary_steps == 0:
                     self.logger.scalars_summary(f'{self.args.tag}/gen_train', gen_meta, iteration) 
@@ -297,13 +284,11 @@ class Solver(object):
                 if iteration % self.args.summary_steps == 0:
                     self.logger.scalars_summary(f'{self.args.tag}/dis_train', dis_meta, iteration) 
 
-            loss_rec = gen_meta['loss_rec']
             loss_srec = gen_meta['loss_srec']
             loss_dis = gen_meta['loss_dis']
-            print(f'G:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
+            print(f'G:[{iteration + 1}/{n_iterations}], '
                     f'loss_srec={loss_srec:.2f}, '
-                    f'loss_dis={loss_dis:.2f}, '
-                    f'lambda={lambda_dis:.1e}     ', 
+                    f'loss_dis={loss_dis:.2f}     ',
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 print()

@@ -31,7 +31,7 @@ dis_ins_norm: True
 dis_dropout_rate: 0.3
 segment_size: 128
 frame_size: 1
-batch_size: 8
+batch_size: 1
 shuffle: True
 gen_lr: 0.0001
 dis_lr: 0.0004
@@ -47,13 +47,13 @@ lambda_kl: 0.01
 lambda_gp: 10 
 weight_decay: 0.0001
 instance_noise: True
-gaussian_std: 0.15
+gaussian_std: 0.2
 grad_norm: 1
 ae_steps: 1
 dis_steps: 1
 dis_sched_iters: 30000
 rec_sched_iters: 30000
-noise_sched_iters: 100000
+noise_sched_iters: 200000
 sample_rate: 24000
 sn: True
 use_dummy: False

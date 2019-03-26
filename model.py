@@ -406,6 +406,15 @@ class AE(nn.Module):
                 n_conv_blocks=dec_n_conv_blocks, 
                 upsample=upsample, 
                 n_dense_blocks=dec_n_dense_blocks, 
+                act=act, sn=False)
+
+        self.generator = Decoder(c_in=c_latent, c_cond=c_cond, 
+                c_h=d_c_h, c_out=c_out, 
+                kernel_size=d_kernel_size,
+                n_mlp_blocks=dec_n_mlp_blocks,
+                n_conv_blocks=dec_n_conv_blocks, 
+                upsample=upsample, 
+                n_dense_blocks=dec_n_dense_blocks, 
                 act=act, sn=sn)
 
     def forward(self, x, x_neg, mode):
@@ -427,7 +436,9 @@ class AE(nn.Module):
                 enc = self.dynamic_encoder(x)
             # synthesis with emb_neg 
             d_noise = enc.new(*enc.size()).normal_(0, 1)
-            dec_syn = self.decoder(enc.detach() + d_noise, emb_neg.detach())
+            dec_syn = self.decoder(enc.detach() + d_noise, emb_neg.detach()).detach()
+            patch = self.generator(enc.detach() + d_noise, emb_neg.detach())
+            dec_syn += patch
             # rec emb, using dummy encoder to avoid grad update
             if self.use_dummy:
                 self.dummy_static_encoder.load(self.static_encoder)
@@ -444,6 +455,8 @@ class AE(nn.Module):
             emb_neg = self.static_encoder(x_neg)
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec_syn = self.decoder(enc + d_noise, emb_neg)
+            patch = self.generator(enc + d_noise, emb_neg)
+            dec_syn += patch
             return enc, emb_neg, dec_syn
         elif mode == 'dis_mismatch':
             emb_neg = self.static_encoder(x_neg)
@@ -453,7 +466,8 @@ class AE(nn.Module):
         emb = self.static_encoder(x_cond)
         enc = self.dynamic_encoder(x)
         dec = self.decoder(enc, emb)
-        return dec
+        patch = self.generator(enc, emb)
+        return dec + patch
 
     def get_static_embeddings(self, x):
         out = self.static_encoder(x)
