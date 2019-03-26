@@ -123,8 +123,10 @@ class Evaluater(object):
         plt.pcolor(data, cmap=plt.cm.Blues)
         plt.xlabel('time', fontsize=20)
         plt.ylabel('Frequency', fontsize=20)
-        plt.title(legend, fontsize=30)
         plt.savefig(pic_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def plot_static_embeddings(self, output_path):
@@ -239,14 +241,20 @@ class Evaluater(object):
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
-        wav_data, _ = self.inference_one_utterance(content, cond)
+        self.plot_spectrograms(self.denormalize(content.cpu().numpy()), 'src.png')
+        self.plot_spectrograms(self.denormalize(cond.cpu().numpy()), 'tar.png')
+        wav_data, dec = self.inference_one_utterance(content, cond)
+        self.plot_spectrograms(dec, 'src2tar.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.src2tar.wav')
-        wav_data, _ = self.inference_one_utterance(cond, content)
+        wav_data, dec = self.inference_one_utterance(cond, content)
+        self.plot_spectrograms(dec, 'tar2src.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.tar2src.wav')
         # reconstruction
-        wav_data, _ = self.inference_one_utterance(content, content)
+        wav_data, dec = self.inference_one_utterance(content, content)
+        self.plot_spectrograms(dec, 'rec_src.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.rec_src.wav')
-        wav_data, _ = self.inference_one_utterance(cond, cond)
+        wav_data, dec = self.inference_one_utterance(cond, cond)
+        self.plot_spectrograms(dec, 'rec_tar.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.rec_tar.wav')
         return
 
