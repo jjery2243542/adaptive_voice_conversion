@@ -139,21 +139,25 @@ class Solver(object):
         loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
         return loss_rec
 
-    def ae_pretrain_step(self, data, lambda_rec):
+    def ae_pretrain_step(self, data, lambda_rec, lambda_srec):
         x, x_neg = [cc(tensor) for tensor in data]
-        enc, emb, dec = self.model(x, x_neg, mode='pretrain_ae')
+        enc, emb, emb_neg, emb_rec, dec, dec_syn = self.model(x, x_neg, mode='pretrain_ae')
 
         criterion = nn.L1Loss()
         loss_rec = criterion(dec, x)
+        loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
+        #loss_srec = criterion(emb_neg, emb_rec)
         loss_kl = torch.mean(enc ** 2)
         loss = lambda_rec * loss_rec + \
-                self.config.lambda_kl * loss_kl
+                self.config.lambda_kl * loss_kl + \
+                lambda_srec * loss_srec
         self.ae_opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
         self.ae_opt.step()
         meta = {'loss_rec': loss_rec.item(),
                 'loss_kl': loss_kl.item(),
+                'loss_srec': loss_srec.item(),
                 'grad_norm': grad_norm}
         return meta
 
@@ -253,17 +257,24 @@ class Solver(object):
                 lambda_rec = self.config.init_lambda_rec + \
                         (self.config.final_lambda_rec - self.config.init_lambda_rec) * \
                         (iteration + 1) / self.config.rec_sched_iters
+            if iteration >= self.config.srec_sched_iters:
+                lambda_srec = self.config.lambda_srec
+            else:
+                lambda_srec = self.config.lambda_srec * \
+                        (iteration + 1) / self.config.srec_sched_iters
             data = next(self.train_iter)
-            meta = self.ae_pretrain_step(data, lambda_rec)
+            meta = self.ae_pretrain_step(data, lambda_rec, lambda_srec)
             # add to logger
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
             loss_rec = meta['loss_rec']
+            loss_srec = meta['loss_srec']
             loss_kl = meta['loss_kl']
 
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
                     f'loss_kl={loss_kl:.2f}, '
-                    f'lambda={lambda_rec:.1e}     ', 
+                    f'loss_srec={loss_srec:.2f}, '
+                    f'lambda={lambda_srec:.1e}     ', 
                     end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration, stage='ae')

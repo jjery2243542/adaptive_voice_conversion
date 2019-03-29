@@ -51,10 +51,11 @@ gaussian_std: 0.15
 grad_norm: 1
 ae_steps: 1
 dis_steps: 1
+srec_sched_iters: 50000
 dis_sched_iters: 30000
 rec_sched_iters: 30000
 noise_sched_iters: 100000
 sample_rate: 24000
 sn: True
-use_dummy: False
+use_dummy: True
 use_mismatch: False

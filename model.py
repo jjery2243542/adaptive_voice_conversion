@@ -413,12 +413,20 @@ class AE(nn.Module):
         if mode == 'pretrain_ae': 
             # static operation
             emb = self.static_encoder(x)
+            emb_neg = self.static_encoder(x_neg)
             # dynamic operation
             enc = self.dynamic_encoder(x)
             # decode
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + d_noise, emb)
-            return enc, emb, dec
+            d_noise = enc.new(*enc.size()).normal_(0, 1)
+            dec_syn = self.decoder(enc.detach() + d_noise, emb_neg.detach())
+            if self.use_dummy:
+                self.dummy_static_encoder.load(self.static_encoder)
+                emb_rec = self.dummy_static_encoder(dec_syn)
+            else:
+                emb_rec = self.static_encoder(dec_syn)
+            return enc, emb, emb_neg, emb_rec, dec, dec_syn
         elif mode == 'gen_ae':
             with torch.no_grad():
                 # static operation
