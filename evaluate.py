@@ -160,6 +160,9 @@ class Evaluater(object):
         plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def plot_segment_embeddings(self, output_path):
@@ -199,6 +202,9 @@ class Evaluater(object):
         plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def utt_make_frames(self, x):
@@ -242,7 +248,11 @@ class Evaluater(object):
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
         self.plot_spectrograms(self.denormalize(content.cpu().numpy()), 'src.png')
+        self.write_wav_to_file(melspectrogram2wav(self.denormalize(content.cpu().numpy())), 
+                f'{args.output_path}.src.wav')
         self.plot_spectrograms(self.denormalize(cond.cpu().numpy()), 'tar.png')
+        self.write_wav_to_file(melspectrogram2wav(self.denormalize(cond.cpu().numpy())), 
+                f'{args.output_path}.tar.wav')
         wav_data, dec = self.inference_one_utterance(content, cond)
         self.plot_spectrograms(dec, 'src2tar.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.src2tar.wav')

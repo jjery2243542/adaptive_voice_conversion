@@ -145,8 +145,8 @@ class Solver(object):
 
         criterion = nn.L1Loss()
         loss_rec = criterion(dec, x)
-        loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
-        #loss_srec = criterion(emb_neg, emb_rec)
+        #loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
+        loss_srec = criterion(emb_neg, emb_rec)
         loss_kl = torch.mean(enc ** 2)
         loss = lambda_rec * loss_rec + \
                 self.config.lambda_kl * loss_kl + \
