@@ -143,10 +143,11 @@ class Solver(object):
         x, x_neg = [cc(tensor) for tensor in data]
         enc, emb, emb_neg, emb_rec, dec, dec_syn = self.model(x, x_neg, mode='pretrain_ae')
 
+        loss_rec = self.weighted_l1_loss(dec, x)
+        #loss_rec = criterion(dec, x)
+        #loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
         criterion = nn.L1Loss()
-        loss_rec = criterion(dec, x)
-        loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
-        #loss_srec = criterion(emb_neg, emb_rec)
+        loss_srec = criterion(emb_neg, emb_rec)
         loss_kl = torch.mean(enc ** 2)
         loss = lambda_rec * loss_rec + \
                 self.config.lambda_kl * loss_kl + \

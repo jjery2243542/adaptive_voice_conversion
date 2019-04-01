@@ -352,7 +352,6 @@ class Decoder(nn.Module):
             y = append_cond(y, self.dense_affine_layers[l*2+1](cond))
             out = y + out
         out = pad_layer(out, self.out_conv_layer)
-        out = torch.tanh(out)
         return out
 
 class AE(nn.Module):
@@ -419,7 +418,6 @@ class AE(nn.Module):
             # decode
             d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec = self.decoder(enc + d_noise, emb)
-            d_noise = enc.new(*enc.size()).normal_(0, 1)
             dec_syn = self.decoder(enc.detach() + d_noise, emb_neg.detach())
             if self.use_dummy:
                 self.dummy_static_encoder.load(self.static_encoder)
