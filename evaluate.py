@@ -92,7 +92,9 @@ class Evaluater(object):
                 upsample=self.config.upsample,
                 act=self.config.gen_act,
                 dropout_rate=self.config.dropout_rate, 
-                use_dummy=self.config.use_dummy, sn=self.config.sn))
+                use_dummy=self.config.use_dummy, sn=self.config.sn,
+                ins_norm_es=self.config.ins_norm_es, 
+                ins_norm_ec=self.config.ins_norm_ec, ins_norm_d=self.config.ins_norm_d))
         print(self.model)
         self.model.eval()
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std, self.config.noise_sched_iters)
@@ -160,6 +162,9 @@ class Evaluater(object):
         plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def plot_segment_embeddings(self, output_path):
@@ -199,6 +204,9 @@ class Evaluater(object):
         plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def utt_make_frames(self, x):
