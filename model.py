@@ -352,7 +352,7 @@ class Decoder(nn.Module):
             y = append_cond(y, self.dense_affine_layers[l*2+1](cond))
             out = y + out
         out = pad_layer(out, self.out_conv_layer)
-        out = torch.tanh(out)
+        #out = torch.tanh(out)
         return out
 
 class AE(nn.Module):
@@ -466,6 +466,27 @@ class AE(nn.Module):
     def get_static_embeddings(self, x):
         out = self.static_encoder(x)
         return out
+
+class SpeakerClassifier(nn.Module):
+    def __init__(self, input_size, c_in, output_dim, n_dense_layers, d_h, act):
+        super(SpeakerClassifier, self).__init__()
+        self.act = get_act(act)
+        dense_input_size = input_size * c_in
+        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size, d_h)] + 
+                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
+                [nn.Linear(d_h, output_dim)])
+
+    def forward(self, x):
+        out = flatten(x)
+        for layer in self.dense_layers[:-1]:
+            out = self.act(layer(out))
+        out = self.dense_layers[-1](out)
+        return out
+
+
+
+
+        
 
 class Discriminator(nn.Module):
     def __init__(self, input_size, 
