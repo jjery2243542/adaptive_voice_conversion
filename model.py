@@ -8,6 +8,22 @@ from functools import reduce
 from torch.nn.utils import spectral_norm
 from utils import cc
 
+class SpeakerClassifier(nn.Module):
+    def __init__(self, input_size, c_in, output_dim, n_dense_layers, d_h, act):
+        super(SpeakerClassifier, self).__init__()
+        self.act = get_act(act)
+        dense_input_size = input_size * c_in
+        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size, d_h)] + 
+                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
+                [nn.Linear(d_h, output_dim)])
+
+    def forward(self, x):
+        out = flatten(x)
+        for layer in self.dense_layers[:-1]:
+            out = self.act(layer(out))
+        out = self.dense_layers[-1](out)
+        return out
+
 class DummyStaticEncoder(object):
     def __init__(self, encoder):
         self.encoder = encoder
