@@ -57,5 +57,5 @@ rec_sched_iters: 30000
 noise_sched_iters: 100000
 sample_rate: 24000
 sn: False
-use_dummy: True
+use_dummy: False
 use_mismatch: False

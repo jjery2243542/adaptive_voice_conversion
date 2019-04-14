@@ -103,7 +103,9 @@ class Solver(object):
                 dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
                 act=self.config.gen_act,
-                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn))
+                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn,
+                ins_norm_es=self.config.ins_norm_es, ins_norm_ec=self.config.ins_norm_ec, 
+                ins_norm_d=self.config.ins_norm_d))
         print(self.model)
         self.discr = cc(Discriminator(
             input_size=(self.config.c_in, self.config.segment_size),
