@@ -477,7 +477,8 @@ class SpeakerClassifier(nn.Module):
                 [nn.Linear(d_h, output_dim)])
 
     def forward(self, x):
-        out = flatten(x)
+        #out = flatten(x)
+        out = x
         for layer in self.dense_layers[:-1]:
             out = self.act(layer(out))
         out = self.dense_layers[-1](out)

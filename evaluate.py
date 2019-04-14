@@ -89,6 +89,43 @@ class Evaluater(object):
             self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id}_con.wav'))
         return
 
+    def plot_conversion_samples_gv(self, src_speaker, tar_speaker, output_dir, n_samples):
+        src_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
+        tar_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        comp_tar_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        src, conv, tar = [], [], []
+        for src_utt, tar_utt, comp_tar_utt in zip(src_utts, tar_utts, comp_tar_utts):
+            src_utt_id = src_utt.split('/')[-1]
+            tar_utt_id = tar_utt.split('/')[-1]
+            comp_tar_utt_id = comp_tar_utt.split('/')[-1]
+            src_mel = self.pkl_data[src_utt_id]
+            tar_mel = self.pkl_data[tar_utt_id]
+            comp_tar_mel = self.pkl_data[comp_tar_utt_id]
+            _, dec = self.inference_one_utterance(torch.from_numpy(src_mel).cuda(), torch.from_numpy(tar_mel).cuda())
+            conv.append(dec)
+            comp_tar_mel = self.denormalize(comp_tar_mel)
+            tar.append(comp_tar_mel)
+            src_mel = self.denormalize(src_mel)
+            src.append(src_mel)
+        conv = np.concatenate(conv)
+        gv_conv = conv.var(axis=0)
+        tar = np.concatenate(tar)
+        gv_tar = tar.var(axis=0)
+        src = np.concatenate(src)
+        gv_src = src.var(axis=0)
+        plt.plot(gv_conv, color='y', label='converted')
+        plt.plot(gv_tar, color='g', label='target speaker')
+        #plt.plot(gv_src, color='tab:purple', label='source speaker')
+        plt.ylabel('gv', fontsize=20)
+        #plt.grid(True)
+        plt.xlabel('freq index', fontsize=20)
+        plt.legend(loc='upper right', prop={'size': 11})
+        plt.savefig(os.path.join(output_dir, f'{src_speaker}_{tar_speaker}.png'))
+        plt.clf()
+        plt.cla()
+        plt.close()
+        return
+
     def generate_conversion_samples(self, src_speaker, tar_speaker, output_dir, n_samples):
         src_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
         src_comp_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
@@ -111,7 +148,7 @@ class Evaluater(object):
             self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_comp_src.wav'))
             wav_data = melspectrogram2wav(self.denormalize(tar_comp_mel))
             self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_comp_tar.wav'))
-            wav_data = melspectrogram2wav(self.denormalize(src_comp2_mel))
+            wav_data = melspectrogram2wav(self.denormalize(src_mel))
             self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_src.wav'))
             wav_data = melspectrogram2wav(self.denormalize(tar_mel))
             self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_tar.wav'))
@@ -211,6 +248,7 @@ class Evaluater(object):
         print(all_embs.shape)
         # TSNE
         embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
+        #embs_2d = PCA(n_components=2).fit_transform(all_embs)
         x_min, x_max = embs_2d.min(0), embs_2d.max(0)
         embs_norm = (embs_2d - x_min) / (x_max - x_min)
         # plot to figure
@@ -310,9 +348,9 @@ class Evaluater(object):
 
     def infer_default(self):
         # using the first sample from in_test
-        #content_utt, _, cond_utt, _ = self.indexes[9]
-        content_utt = 'p256_001.wav'
-        cond_utt = 'p262_001.wav'
+        content_utt, _, cond_utt, _ = self.indexes[6]
+        #content_utt = 'p256_001.wav'
+        #cond_utt = 'p262_001.wav'
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
@@ -356,6 +394,7 @@ if __name__ == '__main__':
     parser.add_argument('-max_samples', default=3000, type=int)
     parser.add_argument('--infer_default', action='store_true')
     parser.add_argument('--gen_mos', action='store_true')
+    parser.add_argument('--plot_gv', action='store_true')
     parser.add_argument('--gen_conv', action='store_true')
     parser.add_argument('-src_speaker')
     parser.add_argument('-tar_speaker')
@@ -383,3 +422,5 @@ if __name__ == '__main__':
         evaluator.generate_mos_samples(args.src_speaker, args.tar_speaker, output_dir=args.output_dir, n_samples=args.n_samples)
     if args.gen_conv:
         evaluator.generate_conversion_samples(args.src_speaker, args.tar_speaker, output_dir=args.output_dir, n_samples=args.n_samples)
+    if args.plot_gv:
+        evaluator.plot_conversion_samples_gv(args.src_speaker, args.tar_speaker, output_dir=args.output_dir, n_samples=args.n_samples)
