@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
+import glob
 from model import AE
 from data_utils import get_data_loader
 from data_utils import PickleDataset
@@ -26,6 +27,7 @@ from matplotlib import pyplot as plt
 from scipy.io.wavfile import write
 import random
 from preprocess.tacotron.utils import melspectrogram2wav
+import librosa 
 
 class Evaluater(object):
     def __init__(self, config, args):
@@ -51,10 +53,107 @@ class Evaluater(object):
         self.sample_n_speakers(self.args.n_speakers)
         with open(os.path.join(self.args.data_dir, 'attr.pkl'), 'rb') as f:
             self.attr = pickle.load(f)
+        self.path_dict = self.read_vctk_pathes()
 
     def load_model(self):
         print(f'Load model from {self.args.load_model_path}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'), strict=False)
+        return
+
+    def read_vctk_pathes(self):
+        vctk_dir = self.args.vctk_dir
+        path_dict = defaultdict(lambda : [])
+        for speaker_dir in sorted(glob.glob(os.path.join(vctk_dir, '*'))):
+            for path in sorted(glob.glob(os.path.join(speaker_dir, '*'))):
+                speaker = path.strip().split('/')[-1][:4]
+                path_dict[speaker].append(path)
+        return path_dict
+
+    def generate_mos_samples(self, src_speaker, tar_speaker, output_dir, n_samples):
+        src_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
+        tar_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        for src_utt, tar_utt in zip(src_utts, tar_utts):
+            # down-sampling
+            wav_data = self.trimmed_and_downsample(src_utt)
+            src_utt_id = src_utt.split('/')[-1]
+            tar_utt_id = tar_utt.split('/')[-1]
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id}_ori.wav'))
+            src_mel = self.pkl_data[src_utt_id]
+            tar_mel = self.pkl_data[tar_utt_id]
+            print(src_mel.shape, tar_mel.shape)
+            wav_data = melspectrogram2wav(self.denormalize(src_mel))
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id}_resyn.wav'))
+            wav_data, _ = self.inference_one_utterance(torch.from_numpy(src_mel).cuda(), torch.from_numpy(src_mel).cuda())
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id}_rec.wav'))
+            wav_data, _ = self.inference_one_utterance(torch.from_numpy(src_mel).cuda(), torch.from_numpy(tar_mel).cuda())
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id}_con.wav'))
+        return
+
+    def plot_conversion_samples_gv(self, src_speaker, tar_speaker, output_dir, n_samples):
+        src_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
+        tar_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        comp_tar_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        src, conv, tar = [], [], []
+        for src_utt, tar_utt, comp_tar_utt in zip(src_utts, tar_utts, comp_tar_utts):
+            src_utt_id = src_utt.split('/')[-1]
+            tar_utt_id = tar_utt.split('/')[-1]
+            comp_tar_utt_id = comp_tar_utt.split('/')[-1]
+            src_mel = self.pkl_data[src_utt_id]
+            tar_mel = self.pkl_data[tar_utt_id]
+            comp_tar_mel = self.pkl_data[comp_tar_utt_id]
+            _, dec = self.inference_one_utterance(torch.from_numpy(src_mel).cuda(), torch.from_numpy(tar_mel).cuda())
+            conv.append(dec)
+            comp_tar_mel = self.denormalize(comp_tar_mel)
+            tar.append(comp_tar_mel)
+            src_mel = self.denormalize(src_mel)
+            src.append(src_mel)
+        conv = np.concatenate(conv)
+        gv_conv = conv.var(axis=0)
+        tar = np.concatenate(tar)
+        gv_tar = tar.var(axis=0)
+        src = np.concatenate(src)
+        gv_src = src.var(axis=0)
+        plt.plot(gv_conv, color='y', label='converted')
+        plt.plot(gv_tar, color='g', label='target speaker')
+        #plt.plot(gv_src, color='tab:purple', label='source speaker')
+        plt.ylabel('gv', fontsize=20)
+        #plt.grid(True)
+        plt.xlabel('freq index', fontsize=20)
+        plt.legend(loc='upper right', prop={'size': 11})
+        plt.savefig(os.path.join(output_dir, f'{src_speaker}_{tar_speaker}.png'))
+        plt.clf()
+        plt.cla()
+        plt.close()
+        return
+
+    def generate_conversion_samples(self, src_speaker, tar_speaker, output_dir, n_samples):
+        src_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
+        src_comp_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
+        src_comp2_utts = random.choices(self.path_dict[src_speaker], k=n_samples)
+        tar_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        tar_comp_utts = random.choices(self.path_dict[tar_speaker], k=n_samples)
+        for src_utt, src_comp_utt, src_comp2_utt, tar_utt, tar_comp_utt in zip(src_utts, src_comp_utts, src_comp2_utts, tar_utts, tar_comp_utts):
+            src_utt_id = src_utt.split('/')[-1]
+            tar_utt_id = tar_utt.split('/')[-1]
+            src_comp_utt_id = src_comp_utt.split('/')[-1]
+            src_comp2_utt_id = src_comp2_utt.split('/')[-1]
+            tar_comp_utt_id = tar_comp_utt.split('/')[-1]
+            src_mel = self.pkl_data[src_utt_id]
+            tar_mel = self.pkl_data[tar_utt_id]
+            src_comp_mel = self.pkl_data[src_comp_utt_id]
+            src_comp2_mel = self.pkl_data[src_comp2_utt_id]
+            tar_comp_mel = self.pkl_data[tar_comp_utt_id]
+            #print(src_mel.shape, tar_mel.shape)
+            wav_data = melspectrogram2wav(self.denormalize(src_comp_mel))
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_comp_src.wav'))
+            wav_data = melspectrogram2wav(self.denormalize(tar_comp_mel))
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_comp_tar.wav'))
+            wav_data = melspectrogram2wav(self.denormalize(src_mel))
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_src.wav'))
+            wav_data = melspectrogram2wav(self.denormalize(tar_mel))
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_tar.wav'))
+            wav_data, _ = self.inference_one_utterance(torch.from_numpy(src_mel).cuda(), torch.from_numpy(tar_mel).cuda())
+            self.write_wav_to_file(wav_data, output_path=os.path.join(output_dir, f'{src_utt_id[:8]}_{tar_utt_id[:8]}_con.wav'))
         return
 
     def load_data(self):
@@ -92,7 +191,9 @@ class Evaluater(object):
                 upsample=self.config.upsample,
                 act=self.config.gen_act,
                 dropout_rate=self.config.dropout_rate, 
-                use_dummy=self.config.use_dummy, sn=self.config.sn))
+                use_dummy=self.config.use_dummy, sn=self.config.sn,
+                ins_norm_es=self.config.ins_norm_es, 
+                ins_norm_ec=self.config.ins_norm_ec, ins_norm_d=self.config.ins_norm_d))
         print(self.model)
         self.model.eval()
         self.noise_adder = NoiseAdder(0, self.config.gaussian_std, self.config.noise_sched_iters)
@@ -149,6 +250,7 @@ class Evaluater(object):
         print(all_embs.shape)
         # TSNE
         embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
+        #embs_2d = PCA(n_components=2).fit_transform(all_embs)
         x_min, x_max = embs_2d.min(0), embs_2d.max(0)
         embs_norm = (embs_2d - x_min) / (x_max - x_min)
         # plot to figure
@@ -160,6 +262,9 @@ class Evaluater(object):
         plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def plot_segment_embeddings(self, output_path):
@@ -199,6 +304,9 @@ class Evaluater(object):
         plt.scatter(embs_norm[male_cluster, 0], embs_norm[male_cluster, 1], 
                 c=colors[male_cluster], marker='o') 
         plt.savefig(output_path)
+        plt.clf()
+        plt.cla()
+        plt.close()
         return
 
     def utt_make_frames(self, x):
@@ -227,22 +335,33 @@ class Evaluater(object):
         return wav_data, dec
 
     def denormalize(self, x):
-        a, b = self.attr['a'], self.attr['b']
-        ret = (x - b) / a
+        m, s = self.attr['mean'], self.attr['std']
+        ret = x * s + m
         return ret
 
     def write_wav_to_file(self, wav_data, output_path):
         write(output_path, rate=self.config.sample_rate, data=wav_data)
         return
 
+    def trimmed_and_downsample(self, fpath):
+        y, sr = librosa.load(fpath, sr=self.config.sample_rate)
+        y, _ = librosa.effects.trim(y, top_db=15)
+        return y 
+
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, cond_utt, _ = self.indexes[1]
+        content_utt, _, cond_utt, _ = self.indexes[6]
+        #content_utt = 'p256_001.wav'
+        #cond_utt = 'p262_001.wav'
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
         self.plot_spectrograms(self.denormalize(content.cpu().numpy()), 'src.png')
+        self.write_wav_to_file(melspectrogram2wav(self.denormalize(content.cpu().numpy())), 
+                f'{args.output_path}.src.wav')
         self.plot_spectrograms(self.denormalize(cond.cpu().numpy()), 'tar.png')
+        self.write_wav_to_file(melspectrogram2wav(self.denormalize(cond.cpu().numpy())), 
+                f'{args.output_path}.tar.wav')
         wav_data, dec = self.inference_one_utterance(content, cond)
         self.plot_spectrograms(dec, 'src2tar.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.src2tar.wav')
@@ -276,7 +395,15 @@ if __name__ == '__main__':
     parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
     parser.add_argument('-max_samples', default=3000, type=int)
     parser.add_argument('--infer_default', action='store_true')
+    parser.add_argument('--gen_mos', action='store_true')
+    parser.add_argument('--plot_gv', action='store_true')
+    parser.add_argument('--gen_conv', action='store_true')
+    parser.add_argument('-src_speaker')
+    parser.add_argument('-tar_speaker')
+    parser.add_argument('-output_dir')
+    parser.add_argument('-n_samples', type=int)
     parser.add_argument('-output_path', default='test')
+    parser.add_argument('-vctk_dir', default='/storage/datasets/VCTK/VCTK-Corpus/wav48')
 
     args = parser.parse_args()
     # load config file 
@@ -284,7 +411,6 @@ if __name__ == '__main__':
         config = yaml.load(f)
         config = Namespace(**config)
     evaluator = Evaluater(config=config, args=args)
-
     if args.plot_speakers:
         evaluator.plot_static_embeddings(args.speakers_output_path)
 
@@ -293,3 +419,10 @@ if __name__ == '__main__':
 
     if args.infer_default:
         evaluator.infer_default()
+
+    if args.gen_mos:
+        evaluator.generate_mos_samples(args.src_speaker, args.tar_speaker, output_dir=args.output_dir, n_samples=args.n_samples)
+    if args.gen_conv:
+        evaluator.generate_conversion_samples(args.src_speaker, args.tar_speaker, output_dir=args.output_dir, n_samples=args.n_samples)
+    if args.plot_gv:
+        evaluator.plot_conversion_samples_gv(args.src_speaker, args.tar_speaker, output_dir=args.output_dir, n_samples=args.n_samples)

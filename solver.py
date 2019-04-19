@@ -103,7 +103,9 @@ class Solver(object):
                 dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
                 upsample=self.config.upsample,
                 act=self.config.gen_act,
-                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn))
+                dropout_rate=self.config.dropout_rate, use_dummy=self.config.use_dummy, sn=self.config.sn,
+                ins_norm_es=self.config.ins_norm_es, ins_norm_ec=self.config.ins_norm_ec, 
+                ins_norm_d=self.config.ins_norm_d))
         print(self.model)
         self.discr = cc(Discriminator(
             input_size=(self.config.c_in, self.config.segment_size),
@@ -143,11 +145,8 @@ class Solver(object):
         x, x_neg = [cc(tensor) for tensor in data]
         enc, emb, emb_neg, emb_rec, dec, dec_syn = self.model(x, x_neg, mode='pretrain_ae')
 
-        loss_rec = self.weighted_l1_loss(dec, x)
-        #loss_rec = criterion(dec, x)
-        #loss_srec = torch.mean((emb_neg - emb_rec) ** 2)
         criterion = nn.L1Loss()
-        loss_srec = criterion(emb_neg, emb_rec)
+        loss_rec = criterion(dec, x)
         loss_kl = torch.mean(enc ** 2)
         loss = lambda_rec * loss_rec + \
                 self.config.lambda_kl * loss_kl + \
