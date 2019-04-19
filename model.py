@@ -164,7 +164,6 @@ class MLP(nn.Module):
 class StaticEncoder(nn.Module):
     def __init__(self, input_size, 
             c_in, c_h, c_out, kernel_size,
-            bank_size, bank_scale, c_bank,
             n_conv_blocks, n_dense_blocks, 
             subsample, act, dropout_rate, ins_norm):
         super(StaticEncoder, self).__init__()
@@ -172,17 +171,13 @@ class StaticEncoder(nn.Module):
         self.c_in = c_in
         self.c_h = c_h
         self.c_out = c_out
-        self.c_bank = c_bank
         self.kernel_size = kernel_size
         self.n_conv_blocks = n_conv_blocks
         self.n_dense_blocks = n_dense_blocks
         self.subsample = subsample
         self.act = get_act(act)
         self.ins_norm = ins_norm
-        self.conv_bank = nn.ModuleList(
-                [nn.Conv1d(c_in, c_bank, kernel_size=k) for k in range(bank_scale, bank_size + 1, bank_scale)])
-        in_channels = c_bank * (bank_size // bank_scale) + c_in
-        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=1)
+        self.in_conv_layer = nn.Conv1d(c_in, c_h, kernel_size=kernel_size)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -319,7 +314,7 @@ class DynamicEncoder(nn.Module):
 
 # Conv_blocks followed by dense blocks
 class Decoder(nn.Module):
-    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size, n_mlp_blocks,
+    def __init__(self, c_in, c_cond, c_h, c_out, kernel_size,
             n_conv_blocks, upsample, n_dense_blocks, act, sn, ins_norm):
         super(Decoder, self).__init__()
         self.c_in = c_in
@@ -331,8 +326,6 @@ class Decoder(nn.Module):
         self.n_dense_blocks = n_dense_blocks
         self.upsample = upsample
         self.act = get_act(act)
-        self.ins_norm = ins_norm
-        self.mlp = MLP(c_in=c_cond, c_h=c_cond, n_blocks=n_mlp_blocks, act=act, sn=sn)
         f = spectral_norm if sn else lambda x: x
         self.in_conv_layer = f(nn.Conv1d(c_in, c_h, kernel_size=1))
         self.first_conv_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=kernel_size)) for _ \
