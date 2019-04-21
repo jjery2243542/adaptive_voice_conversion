@@ -317,17 +317,17 @@ class SpeakerEncoder(nn.Module):
 
 class ContentEncoder(nn.Module):
     def __init__(self, c_in, c_h, c_out, kernel_size,
-            prenet_n_conv_blocks, prenet_subsample, prenet_c_h,  
+            bank_size, bank_scale, c_bank, 
             n_conv_blocks, subsample, 
             act, dropout_rate):
         super(ContentEncoder, self).__init__()
         self.n_conv_blocks = n_conv_blocks
         self.subsample = subsample
         self.act = get_act(act)
-        self.prenet = Prenet(c_in=c_in, c_h=prenet_c_h, c_out=c_h, 
-                kernel_size=kernel_size, 
-                n_conv_blocks=prenet_n_conv_blocks, 
-                subsample=prenet_subsample, act=act, dropout_rate=dropout_rate)
+        self.conv_bank = nn.ModuleList(
+                [nn.Conv1d(c_in, c_bank, kernel_size=k) for k in range(bank_scale, bank_size + 1, bank_scale)])
+        in_channels = c_bank * (bank_size // bank_scale) + c_in
+        self.in_conv_layer = nn.Conv1d(in_channels, c_h, kernel_size=1)
         self.first_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
@@ -337,7 +337,10 @@ class ContentEncoder(nn.Module):
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
-        out = self.prenet(x)
+        out = conv_bank(x, self.conv_bank, act=self.act)
+        # dimension reduction layer
+        out = pad_layer(out, self.in_conv_layer)
+        out = self.act(out)
         out = self.norm_layer(out)
         # convolution blocks
         for l in range(self.n_conv_blocks):
@@ -359,7 +362,6 @@ class Decoder(nn.Module):
     def __init__(self, 
             c_in, c_cond, c_h, c_out, 
             kernel_size,
-            postnet_c_h, postnet_n_conv_blocks, postnet_upsample, 
             n_conv_blocks, upsample, act, sn):
         super(Decoder, self).__init__()
         self.n_conv_blocks = n_conv_blocks
@@ -375,9 +377,7 @@ class Decoder(nn.Module):
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
                 [f(nn.Linear(c_cond, c_h * 2)) for _ in range(n_conv_blocks*2)])
-        self.postnet = Postnet(c_in=c_h, c_h=postnet_c_h, c_out=c_out, c_cond=c_cond, 
-                kernel_size=kernel_size, n_conv_blocks=postnet_n_conv_blocks, upsample=postnet_upsample, 
-                act=act, sn=sn)
+        self.out_conv_layer = f(nn.Conv1d(c_h, c_out, kernel_size=1))
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
@@ -399,7 +399,7 @@ class Decoder(nn.Module):
                 y = self.norm_layer(y)
                 y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
                 out = y + out
-        out = self.postnet(out, cond)
+        out = pad_layer(out, self.out_conv_layer)
         return out
 
 class AE(nn.Module):
