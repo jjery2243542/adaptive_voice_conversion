@@ -19,8 +19,8 @@ ContentEncoder:
     bank_size: 8
     bank_scale: 1
     c_bank: 128
-    n_conv_blocks: 6
-    subsample: [1, 1, 2, 1, 1, 2]
+    n_conv_blocks: 8
+    subsample: [1, 1, 1, 2, 1, 1, 1, 2]
     act: 'relu'
     dropout_rate: 0.5
 Decoder:
@@ -29,8 +29,8 @@ Decoder:
     c_h: 256
     c_out: 512
     kernel_size: 5
-    n_conv_blocks: 6
-    upsample: [2, 1, 1, 2, 1, 1]
+    n_conv_blocks: 8
+    upsample: [2, 1, 1, 1, 2, 1, 1, 1]
     act: 'relu'
     sn: True
 data_loader:
