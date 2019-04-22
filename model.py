@@ -362,7 +362,7 @@ class Decoder(nn.Module):
     def __init__(self, 
             c_in, c_cond, c_h, c_out, 
             kernel_size,
-            n_conv_blocks, upsample, act, sn):
+            n_conv_blocks, upsample, act, sn, dropout_rate):
         super(Decoder, self).__init__()
         self.n_conv_blocks = n_conv_blocks
         self.upsample = upsample
@@ -378,26 +378,31 @@ class Decoder(nn.Module):
         self.conv_affine_layers = nn.ModuleList(
                 [f(nn.Linear(c_cond, c_h * 2)) for _ in range(n_conv_blocks*2)])
         self.out_conv_layer = f(nn.Conv1d(c_h, c_out, kernel_size=1))
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
         out = self.act(out)
+        out = self.dropout_layer(out)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
             y = self.act(y)
             y = self.norm_layer(y)
             y = append_cond(y, self.conv_affine_layers[l*2](cond))
+            y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
             if self.upsample[l] > 1:
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
                 y = self.norm_layer(y)
                 y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
+                y = self.dropout_layer(y)
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
                 y = self.norm_layer(y)
                 y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
+                y = self.dropout_layer(y)
                 out = y + out
         out = pad_layer(out, self.out_conv_layer)
         return out
@@ -409,17 +414,22 @@ class AE(nn.Module):
         self.content_encoder = ContentEncoder(**config['ContentEncoder'])
         self.decoder = Decoder(**config['Decoder'])
 
-    def forward(self, x, x_cond):
-        emb = self.speaker_encoder(x_cond)
+    def forward(self, x):
+        emb = self.speaker_encoder(x)
         enc = self.content_encoder(x)
-        dec = self.decoder(enc, emb)
+        noise = enc.new(*enc.size()).normal_(0, 1)
+        dec = self.decoder(enc + noise, emb)
         return enc, emb, dec
 
     def inference(self, x, x_cond):
-        emb = self.static_encoder(x_cond)
-        enc = self.dynamic_encoder(x)
+        emb = self.speaker_encoder(x_cond)
+        enc = self.content_encoder(x)
         dec = self.decoder(enc, emb)
         return dec
+
+    def get_speaker_embeddings(self, x):
+        emb = self.speaker_encoder(x)
+        return emb
 '''
 class SpeakerClassifier(nn.Module):
     def __init__(self, input_size, c_in, output_dim, n_dense_layers, d_h, act):

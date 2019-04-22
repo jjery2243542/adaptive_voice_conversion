@@ -7,19 +7,6 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 '''
-class SequenceDataset(Dataset):
-    def __init__(self, data):
-        self.data = data
-        self.utt_ids = list(self.data.keys())
-
-    def __getitem__(self, ind):
-        utt_id = self.utt_ids[ind]
-        ret = self.data[utt_id].transpose()
-        return ret
-
-    def __len__(self):
-        return len(self.utt_ids)
-
 def get_speaker_ids(train_index_path, test_index_path, output_dir):
     indexes = json.load(open(train_index_path))
     utt2sid = {}
@@ -109,14 +96,27 @@ class CollateFn(object):
 
     def __call__(self, l):
         data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1)
-        segment, segment_cond = [self.make_frames(element) for element in data_tensor]
-        return segment, segment_cond
+        segment, segment_neg = [self.make_frames(element) for element in data_tensor]
+        return segment, segment_neg
 
 def get_data_loader(dataset, batch_size, frame_size, shuffle=True, num_workers=4, drop_last=False):
     _collate_fn = CollateFn(frame_size=frame_size) 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, 
             num_workers=num_workers, collate_fn=_collate_fn, pin_memory=True)
     return dataloader
+
+class SequenceDataset(Dataset):
+    def __init__(self, data):
+        self.data = data
+        self.utt_ids = list(self.data.keys())
+
+    def __getitem__(self, ind):
+        utt_id = self.utt_ids[ind]
+        ret = self.data[utt_id].transpose()
+        return ret
+
+    def __len__(self):
+        return len(self.utt_ids)
 
 class PickleDataset(Dataset):
     def __init__(self, pickle_path, sample_index_path, segment_size):
@@ -127,10 +127,10 @@ class PickleDataset(Dataset):
         self.segment_size = segment_size
 
     def __getitem__(self, ind):
-        utt_id, t1, t2, _, _ = self.indexes[ind]
-        segment = self.data[utt_id][t1:t1 + self.segment_size]
-        segment_cond = self.data[utt_id][t2:t2 + self.segment_size]
-        return segment, segment_cond
+        utt_id, t, neg_utt_id, t_neg = self.indexes[ind]
+        segment = self.data[utt_id][t:t + self.segment_size]
+        segment_neg = self.data[neg_utt_id][t_neg:t_neg + self.segment_size]
+        return segment, segment_neg
 
     def __len__(self):
         return len(self.indexes)

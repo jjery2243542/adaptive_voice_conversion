@@ -1,48 +1,49 @@
 SpeakerEncoder:
     c_in: 512
-    c_h: 256
-    c_out: 256
-    kernel_size: 5
+    c_h: 128
+    c_out: 128
+    kernel_size: 3
     bank_size: 8
     bank_scale: 1
     c_bank: 128
     n_conv_blocks: 6
-    n_dense_blocks: 4
+    n_dense_blocks: 6
     subsample: [1, 2, 1, 2, 1, 2]
     act: 'relu'
     dropout_rate: 0.5
 ContentEncoder:
     c_in: 512
-    c_h: 256
-    c_out: 256
+    c_h: 128
+    c_out: 128
     kernel_size: 5
     bank_size: 8
     bank_scale: 1
     c_bank: 128
-    n_conv_blocks: 8
-    subsample: [1, 1, 1, 2, 1, 1, 1, 2]
+    n_conv_blocks: 6
+    subsample: [1, 1, 2, 1, 1, 2]
     act: 'relu'
     dropout_rate: 0.5
 Decoder:
-    c_in: 256
-    c_cond: 256
-    c_h: 256
+    c_in: 128
+    c_cond: 128
+    c_h: 128
     c_out: 512
     kernel_size: 5
-    n_conv_blocks: 8
-    upsample: [2, 1, 1, 1, 2, 1, 1, 1]
+    n_conv_blocks: 6
+    upsample: [2, 1, 1, 2, 1, 1]
     act: 'relu'
-    sn: True
+    sn: False
+    dropout_rate: 0.5
 data_loader:
-    segment_size: 64
+    segment_size: 128
     frame_size: 1
-    batch_size: 64
+    batch_size: 256
     shuffle: True
 optimizer:
     lr: 0.0005
     beta1: 0.9
     beta2: 0.999
-    amsgrad: True
+    amsgrad: False
     weight_decay: 0.0001
     grad_norm: 5
 lambda:

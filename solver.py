@@ -79,8 +79,8 @@ class Solver(object):
         return
 
     def ae_step(self, data):
-        x, x_cond = [cc(tensor) for tensor in data]
-        enc, emb, dec = self.model(x, x_cond)
+        x, _ = [cc(tensor) for tensor in data]
+        enc, emb, dec = self.model(x)
         criterion = nn.L1Loss()
         loss_rec = criterion(dec, x)
         loss_kl = torch.mean(enc ** 2)

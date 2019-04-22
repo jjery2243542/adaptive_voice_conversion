@@ -9,12 +9,11 @@ import pickle
 import glob
 from model import AE
 from data_utils import get_data_loader
-from data_utils import PickleDataset
+from data_utils import PickleDataset, SequenceDataset
 from utils import *
 from functools import reduce
 import json
 from collections import defaultdict
-from data_utils import SequenceDataset
 from torch.utils.data import Dataset
 from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
@@ -34,7 +33,6 @@ class Evaluater(object):
         # config store the value of hyperparameters, turn to attr by AttrDict
         self.config = config
         print(config)
-
         # args store other information
         self.args = args
         print(self.args)
@@ -53,11 +51,11 @@ class Evaluater(object):
         self.sample_n_speakers(self.args.n_speakers)
         with open(os.path.join(self.args.data_dir, 'attr.pkl'), 'rb') as f:
             self.attr = pickle.load(f)
-        self.path_dict = self.read_vctk_pathes()
+        #self.path_dict = self.read_vctk_pathes()
 
     def load_model(self):
         print(f'Load model from {self.args.load_model_path}')
-        self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'), strict=False)
+        self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
         return
 
     def read_vctk_pathes(self):
@@ -167,36 +165,9 @@ class Evaluater(object):
 
     def build_model(self): 
         # create model, discriminator, optimizers
-        self.model = cc(AE(input_size=self.config.segment_size // self.config.frame_size,
-                c_in=self.config.c_in * self.config.frame_size,
-                s_c_h=self.config.s_c_h,
-                d_c_h=self.config.d_c_h,
-                c_latent=self.config.c_latent,
-                c_cond=self.config.c_cond,
-                c_out=self.config.c_in * self.config.frame_size,
-                c_bank=self.config.c_bank,
-                bank_size=self.config.bank_size,
-                bank_scale=self.config.bank_scale,
-                s_kernel_size=self.config.s_kernel_size,
-                d_kernel_size=self.config.d_kernel_size,
-                s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
-                s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
-                d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
-                d_enc_n_dense_blocks=self.config.d_enc_n_dense_blocks,
-                s_subsample=self.config.s_subsample,
-                d_subsample=self.config.d_subsample,
-                dec_n_conv_blocks=self.config.dec_n_conv_blocks,
-                dec_n_dense_blocks=self.config.dec_n_dense_blocks,
-                dec_n_mlp_blocks=self.config.dec_n_mlp_blocks,
-                upsample=self.config.upsample,
-                act=self.config.gen_act,
-                dropout_rate=self.config.dropout_rate, 
-                use_dummy=self.config.use_dummy, sn=self.config.sn,
-                ins_norm_es=self.config.ins_norm_es, 
-                ins_norm_ec=self.config.ins_norm_ec, ins_norm_d=self.config.ins_norm_d))
+        self.model = cc(AE(self.config))
         print(self.model)
         self.model.eval()
-        self.noise_adder = NoiseAdder(0, self.config.gaussian_std, self.config.noise_sched_iters)
         return
 
     def sample_n_speakers(self, n_speakers):
@@ -213,8 +184,8 @@ class Evaluater(object):
             for i, line in enumerate(f):
                 if i == 0:
                     continue
-                id, _, gender, _ = line.strip().split(maxsplit=3)
-                speaker2gender[f'p{id}'] = gender
+                sid, gender, _ = line.strip().split('\t', maxsplit=2)
+                speaker2gender[sid] = gender
         return speaker2gender
 
     def plot_spectrograms(self, data, pic_path):
@@ -230,18 +201,18 @@ class Evaluater(object):
         plt.close()
         return
 
-    def plot_static_embeddings(self, output_path):
+    def plot_speaker_embeddings(self, output_path):
         # hack code
         small_pkl_data = {key: val for key, val in self.pkl_data.items() \
-                if key[:len('p000')] in self.sampled_speakers and val.shape[0] > 128}
-        speakers = [key[:len('p000')] for key in small_pkl_data.keys()]
+                if key.split('_')[0] in self.sampled_speakers and val.shape[0] > 128}
+        speakers = [key.split('_')[0] for key in small_pkl_data.keys()]
         dataset = SequenceDataset(small_pkl_data)
         dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
         all_embs = []
         # run the model 
         for data in dataloader:
             data = cc(data)
-            embs = self.model.get_static_embeddings(data)
+            embs = self.model.get_speaker_embeddings(data)
             all_embs = all_embs + embs.detach().cpu().numpy().tolist()
         all_embs = np.array(all_embs)
         norms = np.sqrt(np.sum(all_embs ** 2, axis=1, keepdims=True))
@@ -250,7 +221,6 @@ class Evaluater(object):
         print(all_embs.shape)
         # TSNE
         embs_2d = TSNE(n_components=2, init='pca', perplexity=50).fit_transform(all_embs)
-        #embs_2d = PCA(n_components=2).fit_transform(all_embs)
         x_min, x_max = embs_2d.min(0), embs_2d.max(0)
         embs_norm = (embs_2d - x_min) / (x_max - x_min)
         # plot to figure
@@ -270,12 +240,12 @@ class Evaluater(object):
     def plot_segment_embeddings(self, output_path):
         # filter the samples by speakers sampled
         # hack code 
-        small_indexes = [index for index in self.indexes if index[2][:len('p000')] in self.sampled_speakers]
+        small_indexes = [index for index in self.indexes if index[3].split('_')[0] in self.sampled_speakers]
         random.shuffle(small_indexes)
         small_indexes = small_indexes[:self.args.max_samples]
         # generate the tensor and dataloader for evaluation
-        tensor = [self.pkl_data[key][t:t + self.config.segment_size] for _, _, key, t in small_indexes]
-        speakers = [key[:len('p000')] for _, _, key, _  in small_indexes]
+        tensor = [self.pkl_data[key][t:t + self.config['data_loader']['segment_size']] for _, _, _, key, t in small_indexes]
+        speakers = [key.split('_')[0] for _, _, _, key, _  in small_indexes]
         # add the dimension for channel
         tensor = self.seg_make_frames(torch.from_numpy(np.array(tensor)))
         dataset = TensorDataset(tensor)
@@ -284,7 +254,7 @@ class Evaluater(object):
         # run the model 
         for data in dataloader:
             data = cc(data[0])
-            embs = self.model.get_static_embeddings(data)
+            embs = self.model.get_speaker_embeddings(data)
             all_embs = all_embs + embs.detach().cpu().numpy().tolist()
         all_embs = np.array(all_embs)
         norms = np.sqrt(np.sum(all_embs ** 2, axis=1, keepdims=True))
@@ -310,16 +280,18 @@ class Evaluater(object):
         return
 
     def utt_make_frames(self, x):
-        remains = x.size(0) % self.config.frame_size
+        frame_size = self.config['data_loader']['frame_size']
+        remains = x.size(0) % frame_size 
         if remains != 0:
             x = F.pad(x, (0, remains))
-        out = x.view(1, x.size(0) // self.config.frame_size, self.config.frame_size * x.size(1)).transpose(1, 2)
+        out = x.view(1, x.size(0) // frame_size, frame_size * x.size(1)).transpose(1, 2)
         return out
 
     def seg_make_frames(self, xs):
         # xs = [batch_size, segment_size, channels]
         # ys = [batch_size, frame_size, segment_size // frame_size]
-        ys = xs.view(xs.size(0), xs.size(1) // self.config.frame_size, self.config.frame_size * xs.size(2)).transpose(1, 2)
+        frame_size = self.config['data_loader']['frame_size']
+        ys = xs.view(xs.size(0), xs.size(1) // frame_size, frame_size * xs.size(2)).transpose(1, 2)
         return ys
 
     def inference_one_utterance(self, x, x_cond):
@@ -331,7 +303,6 @@ class Evaluater(object):
         print(x.mean(), dec.mean())
         dec = self.denormalize(dec)
         wav_data = melspectrogram2wav(dec)
-        #write(output_path, rate=self.config.sample_rate, data=wav_data)
         return wav_data, dec
 
     def denormalize(self, x):
@@ -340,19 +311,19 @@ class Evaluater(object):
         return ret
 
     def write_wav_to_file(self, wav_data, output_path):
-        write(output_path, rate=self.config.sample_rate, data=wav_data)
+        write(output_path, rate=24000, data=wav_data)
         return
 
     def trimmed_and_downsample(self, fpath):
-        y, sr = librosa.load(fpath, sr=self.config.sample_rate)
+        y, sr = librosa.load(fpath, sr=24000)
         y, _ = librosa.effects.trim(y, top_db=15)
         return y 
 
     def infer_default(self):
         # using the first sample from in_test
-        content_utt, _, cond_utt, _ = self.indexes[6]
-        #content_utt = 'p256_001.wav'
-        #cond_utt = 'p262_001.wav'
+        #content_utt, _, cond_utt, _ = self.indexes[6]
+        content_utt = '84_121123_000068_000000.wav'
+        cond_utt = '1272_128104_000003_000005.wav'
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
@@ -391,8 +362,8 @@ if __name__ == '__main__':
     parser.add_argument('--plot_segments', action='store_true')
     parser.add_argument('-segments_output_path', default='segment.png')
     parser.add_argument('-spec_output_path', default='spec')
-    parser.add_argument('-n_speakers', default=8, type=int)
-    parser.add_argument('-speaker_info_path', default='/storage/datasets/VCTK/VCTK-Corpus/speaker-info.txt')
+    parser.add_argument('-n_speakers', default=20, type=int)
+    parser.add_argument('-speaker_info_path', default='/dataset/LibriTTS/speakers.tsv')
     parser.add_argument('-max_samples', default=3000, type=int)
     parser.add_argument('--infer_default', action='store_true')
     parser.add_argument('--gen_mos', action='store_true')
@@ -409,10 +380,9 @@ if __name__ == '__main__':
     # load config file 
     with open(args.config) as f:
         config = yaml.load(f)
-        config = Namespace(**config)
     evaluator = Evaluater(config=config, args=args)
     if args.plot_speakers:
-        evaluator.plot_static_embeddings(args.speakers_output_path)
+        evaluator.plot_speaker_embeddings(args.speakers_output_path)
 
     if args.plot_segments:
         evaluator.plot_segment_embeddings(args.segments_output_path)
