@@ -109,8 +109,8 @@ class CollateFn(object):
 
     def __call__(self, l):
         data_tensor = torch.from_numpy(np.array(l)).transpose(0, 1)
-        segment, segment_cond = [self.make_frames(element) for element in data_tensor]
-        return segment, segment_cond
+        segment, segment_neg = [self.make_frames(element) for element in data_tensor]
+        return segment, segment_neg
 
 def get_data_loader(dataset, batch_size, frame_size, shuffle=True, num_workers=4, drop_last=False):
     _collate_fn = CollateFn(frame_size=frame_size) 
@@ -127,10 +127,10 @@ class PickleDataset(Dataset):
         self.segment_size = segment_size
 
     def __getitem__(self, ind):
-        utt_id, t1, t2, _, _ = self.indexes[ind]
-        segment = self.data[utt_id][t1:t1 + self.segment_size]
-        segment_cond = self.data[utt_id][t2:t2 + self.segment_size]
-        return segment, segment_cond
+        utt_id, t, neg_utt_id, t_neg = self.indexes[ind]
+        segment = self.data[utt_id][t:t + self.segment_size]
+        segment_neg = self.data[neg_utt_id][t_neg:t_neg + self.segment_size]
+        return segment, segment_neg
 
     def __len__(self):
         return len(self.indexes)
