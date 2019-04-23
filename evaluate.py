@@ -321,46 +321,45 @@ class Evaluater(object):
 
     def infer_default(self):
         # using the first sample from in_test
-        #content_utt, _, cond_utt, _ = self.indexes[6]
-        content_utt = '84_121123_000068_000000.wav'
-        cond_utt = '1272_128104_000003_000005.wav'
+        content_utt, _, cond_utt, _ = self.indexes[6]
+        #content_utt = '84_121123_000068_000000.wav'
+        #cond_utt = '1272_128104_000003_000005.wav'
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()
-        self.plot_spectrograms(self.denormalize(content.cpu().numpy()), 'src.png')
+        self.plot_spectrograms(self.denormalize(content.cpu().numpy()), f'{args.output_path}.src.png')
         self.write_wav_to_file(melspectrogram2wav(self.denormalize(content.cpu().numpy())), 
                 f'{args.output_path}.src.wav')
-        self.plot_spectrograms(self.denormalize(cond.cpu().numpy()), 'tar.png')
+        self.plot_spectrograms(self.denormalize(cond.cpu().numpy()), f'{args.output_path}.tar.png')
         self.write_wav_to_file(melspectrogram2wav(self.denormalize(cond.cpu().numpy())), 
                 f'{args.output_path}.tar.wav')
         wav_data, dec = self.inference_one_utterance(content, cond)
-        self.plot_spectrograms(dec, 'src2tar.png')
+        self.plot_spectrograms(dec, f'{args.output_path}.src2tar.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.src2tar.wav')
         wav_data, dec = self.inference_one_utterance(cond, content)
-        self.plot_spectrograms(dec, 'tar2src.png')
+        self.plot_spectrograms(dec, f'{args.output_path}.tar2src.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.tar2src.wav')
         # reconstruction
         wav_data, dec = self.inference_one_utterance(content, content)
-        self.plot_spectrograms(dec, 'rec_src.png')
+        self.plot_spectrograms(dec, f'{args.output_path}.rec_src.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.rec_src.wav')
         wav_data, dec = self.inference_one_utterance(cond, cond)
-        self.plot_spectrograms(dec, 'rec_tar.png')
+        self.plot_spectrograms(dec, f'{args.output_path}.rec_tar.png')
         self.write_wav_to_file(wav_data, f'{args.output_path}.rec_tar.wav')
         return
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('-config', '-c', default='config.yaml')
     parser.add_argument('-data_dir', '-d', 
             default='/storage/feature/voice_conversion/trimmed_vctk_spectrograms/sr_24000_hop_300/')
     parser.add_argument('-val_set', default='in_test')
     parser.add_argument('-val_index_file', default='in_test_samples_128.json')
     parser.add_argument('-load_model_path', default='/storage/model/adaptive_vc/model')
     parser.add_argument('--plot_speakers', action='store_true')
-    parser.add_argument('-speakers_output_path', default='speaker.png')
+    parser.add_argument('-speakers_output_path', default='tmp_result/speaker.png')
     parser.add_argument('--plot_segments', action='store_true')
-    parser.add_argument('-segments_output_path', default='segment.png')
+    parser.add_argument('-segments_output_path', default='tmp_result/segment.png')
     parser.add_argument('-spec_output_path', default='spec')
     parser.add_argument('-n_speakers', default=20, type=int)
     parser.add_argument('-speaker_info_path', default='/dataset/LibriTTS/speakers.tsv')
@@ -373,12 +372,12 @@ if __name__ == '__main__':
     parser.add_argument('-tar_speaker')
     parser.add_argument('-output_dir')
     parser.add_argument('-n_samples', type=int)
-    parser.add_argument('-output_path', default='test')
+    parser.add_argument('-output_path', default='tmp_result/test')
     parser.add_argument('-vctk_dir', default='/storage/datasets/VCTK/VCTK-Corpus/wav48')
 
     args = parser.parse_args()
     # load config file 
-    with open(args.config) as f:
+    with open(f'{args.load_model_path}.config.yaml') as f:
         config = yaml.load(f)
     evaluator = Evaluater(config=config, args=args)
     if args.plot_speakers:
