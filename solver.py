@@ -78,9 +78,16 @@ class Solver(object):
         print(self.opt)
         return
 
+    def weighted_loss(self, dec, x):
+        criterion = nn.L1Loss()
+        n_priority_freq = int(3000 / (self.config['sample_rate'] * 0.5) * self.config['ContentEncoder']['c_in'])
+        loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
+        return loss_rec
+
     def ae_step(self, data):
         x, _ = [cc(tensor) for tensor in data]
         enc, emb, dec = self.model(x)
+        #loss_rec = self.weighted_loss(dec, x)
         criterion = nn.L1Loss()
         loss_rec = criterion(dec, x)
         loss_kl = torch.mean(enc ** 2)
