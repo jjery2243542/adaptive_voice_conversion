@@ -342,6 +342,7 @@ class ContentEncoder(nn.Module):
         out = pad_layer(out, self.in_conv_layer)
         out = self.act(out)
         out = self.norm_layer(out)
+        out = self.dropout_layer(out)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])

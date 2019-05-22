@@ -13,7 +13,7 @@ if __name__ == '__main__':
     with open(pickle_path, 'rb') as f:
         data = pickle.load(f)
 
-    # (utt_id, timestep_1, timestep_2, neg_utt_id, neg_timestep)
+    # (utt_id, timestep, neg_utt_id, neg_timestep)
     samples = []
 
     # filter length > segment_size

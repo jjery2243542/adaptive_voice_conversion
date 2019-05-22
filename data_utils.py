@@ -53,7 +53,7 @@ def get_cla_data_loader(dataset, batch_size, shuffle=True):
         data = torch.from_numpy(np.array([a for a, _ in l])).transpose(1, 2)
         target = torch.from_numpy(np.array([b for _, b in l]))
         return data, target
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, collate_fn=_collate_fn, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, collate_fn=_collate_fn, pin_memory=False)
     return dataloader
 
 def get_cla_data_loader(dataset, batch_size, shuffle=True):
