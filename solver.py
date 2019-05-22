@@ -84,7 +84,7 @@ class Solver(object):
         loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
         return loss_rec
 
-    def ae_step(self, data):
+    def ae_step(self, data, lambda_kl):
         x, _ = [cc(tensor) for tensor in data]
         enc, emb, dec = self.model(x)
         #loss_rec = self.weighted_loss(dec, x)
@@ -92,7 +92,7 @@ class Solver(object):
         loss_rec = criterion(dec, x)
         loss_kl = torch.mean(enc ** 2)
         loss = self.config['lambda']['lambda_rec'] * loss_rec + \
-                self.config['lambda']['lambda_kl'] * loss_kl
+                lambda_kl * loss_kl
         self.opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 
@@ -105,8 +105,12 @@ class Solver(object):
 
     def train(self, n_iterations):
         for iteration in range(n_iterations):
+            if iteration >= self.config['annealing_iters']:
+                lambda_kl = self.config['lambda']['lambda_kl']
+            else:
+                lambda_kl = self.config['lambda']['lambda_kl'] * (iteration + 1) / self.config['annealing_iters'] 
             data = next(self.train_iter)
-            meta = self.ae_step(data)
+            meta = self.ae_step(data, lambda_kl)
             # add to logger
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/ae_train', meta, iteration)

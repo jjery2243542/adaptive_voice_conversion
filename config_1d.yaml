@@ -48,5 +48,6 @@ optimizer:
     grad_norm: 5
 lambda:
     lambda_rec: 10
-    lambda_kl: 0.1
+    lambda_kl: 1
+annealing_iters: 50000
 sample_rate: 24000
