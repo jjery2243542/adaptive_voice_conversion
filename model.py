@@ -121,10 +121,12 @@ def append_cond_2d(x, cond):
     out = x * std.unsqueeze(dim=2).unsqueeze(dim=3) + mean.unsqueeze(dim=2).unsqueeze(dim=3)
     return out
 
-def conv_bank(x, module_list, act, pad_type='reflect'):
+def conv_bank(x, module_list, act=None, pad_type='reflect'):
     outs = []
     for layer in module_list:
-        out = act(pad_layer(x, layer, pad_type))
+        out = pad_layer(x, layer, pad_type)
+        if act:
+            out = act(out)
         outs.append(out)
     out = torch.cat(outs + [x], dim=1)
     return out
@@ -249,7 +251,7 @@ class SpeakerEncoder(nn.Module):
     def __init__(self, c_in, c_h, c_out, kernel_size,
             bank_size, bank_scale, c_bank, 
             n_conv_blocks, n_dense_blocks, 
-            subsample, act, dropout_rate):
+            subsample, act):
         super(SpeakerEncoder, self).__init__()
         self.c_in = c_in
         self.c_h = c_h
@@ -271,7 +273,6 @@ class SpeakerEncoder(nn.Module):
         self.first_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
         self.second_dense_layers = nn.ModuleList([nn.Linear(c_h, c_h) for _ in range(n_dense_blocks)])
         self.output_layer = nn.Linear(c_h, c_out)
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def conv_blocks(self, inp):
         out = inp
@@ -279,10 +280,8 @@ class SpeakerEncoder(nn.Module):
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
             y = self.act(y)
-            y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
             y = self.act(y)
-            y = self.dropout_layer(y)
             if self.subsample[l] > 1:
                 out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
             out = y + out
@@ -294,10 +293,8 @@ class SpeakerEncoder(nn.Module):
         for l in range(self.n_dense_blocks):
             y = self.first_dense_layers[l](out)
             y = self.act(y)
-            y = self.dropout_layer(y)
             y = self.second_dense_layers[l](y)
             y = self.act(y)
-            y = self.dropout_layer(y)
             out = y + out
         return out
 
@@ -319,7 +316,7 @@ class ContentEncoder(nn.Module):
     def __init__(self, c_in, c_h, c_out, kernel_size,
             bank_size, bank_scale, c_bank, 
             n_conv_blocks, subsample, 
-            act, dropout_rate):
+            act):
         super(ContentEncoder, self).__init__()
         self.n_conv_blocks = n_conv_blocks
         self.subsample = subsample
@@ -334,25 +331,21 @@ class ContentEncoder(nn.Module):
             for sub, _ in zip(subsample, range(n_conv_blocks))])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
-        out = conv_bank(x, self.conv_bank, act=self.act)
-        # dimension reduction layer
-        out = pad_layer(out, self.in_conv_layer)
+        out = conv_bank(x, self.conv_bank, act=None)
         out = self.norm_layer(out)
         out = self.act(out)
-        out = self.dropout_layer(out)
+        # dimension reduction layer
+        out = pad_layer(out, self.in_conv_layer)
         # convolution blocks
         for l in range(self.n_conv_blocks):
-            y = pad_layer(out, self.first_conv_layers[l])
+            y = self.norm_layer(out)
+            y = self.act(y)
+            y = pad_layer(y, self.first_conv_layers[l])
             y = self.norm_layer(y)
             y = self.act(y)
-            y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
-            y = self.norm_layer(y)
-            y = self.act(y)
-            y = self.dropout_layer(y)
             if self.subsample[l] > 1:
                 out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
             out = y + out
@@ -363,7 +356,7 @@ class Decoder(nn.Module):
     def __init__(self, 
             c_in, c_cond, c_h, c_out, 
             kernel_size,
-            n_conv_blocks, upsample, act, sn, dropout_rate):
+            n_conv_blocks, upsample, act, sn):
         super(Decoder, self).__init__()
         self.n_conv_blocks = n_conv_blocks
         self.upsample = upsample
@@ -373,37 +366,30 @@ class Decoder(nn.Module):
         self.first_conv_layers = nn.ModuleList([f(nn.Conv1d(c_h, c_h, kernel_size=kernel_size)) for _ \
                 in range(n_conv_blocks)])
         self.second_conv_layers = nn.ModuleList(\
-                [f(nn.Conv1d(c_h, c_h * up, kernel_size=kernel_size)) \
-                for _, up in zip(range(n_conv_blocks), self.upsample)])
+                [f(nn.Conv1d(c_h, c_h, kernel_size=kernel_size)) for _ in range(n_conv_blocks)])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
         self.conv_affine_layers = nn.ModuleList(
                 [f(nn.Linear(c_cond, c_h * 2)) for _ in range(n_conv_blocks*2)])
         self.out_conv_layer = f(nn.Conv1d(c_h, c_out, kernel_size=1))
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, cond):
-        out = pad_layer(x, self.in_conv_layer)
-        out = self.norm_layer(out)
+        out = self.norm_layer(x)
         out = self.act(out)
-        out = self.dropout_layer(out)
+        out = pad_layer(out, self.in_conv_layer)
         # convolution blocks
         for l in range(self.n_conv_blocks):
-            y = pad_layer(out, self.first_conv_layers[l])
-            y = self.norm_layer(y)
+            y = self.norm_layer(out)
             y = append_cond(y, self.conv_affine_layers[l*2](cond))
             y = self.act(y)
-            y = self.dropout_layer(y)
-            y = pad_layer(y, self.second_conv_layers[l])
-            if self.upsample[l] > 1:
-                y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
+            y = pad_layer(y, self.first_conv_layers[l])
             y = self.norm_layer(y)
             y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
             y = self.act(y)
-            y = self.dropout_layer(y)
+            y = pad_layer(y, self.second_conv_layers[l])
             if self.upsample[l] > 1:
-                out = y + upsample(out, scale_factor=self.upsample[l]) 
-            else:
-                out = y + out
+                out = upsample(out, scale_factor=self.upsample[l]) 
+                y = upsample(y, scale_factor=self.upsample[l]) 
+            out = y + out
         out = pad_layer(out, self.out_conv_layer)
         return out
 
