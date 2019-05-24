@@ -340,18 +340,18 @@ class ContentEncoder(nn.Module):
         out = conv_bank(x, self.conv_bank, act=self.act)
         # dimension reduction layer
         out = pad_layer(out, self.in_conv_layer)
-        out = self.act(out)
         out = self.norm_layer(out)
+        out = self.act(out)
         out = self.dropout_layer(out)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
-            y = self.act(y)
             y = self.norm_layer(y)
+            y = self.act(y)
             y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
-            y = self.act(y)
             y = self.norm_layer(y)
+            y = self.act(y)
             y = self.dropout_layer(y)
             if self.subsample[l] > 1:
                 out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
@@ -383,27 +383,26 @@ class Decoder(nn.Module):
 
     def forward(self, x, cond):
         out = pad_layer(x, self.in_conv_layer)
+        out = self.norm_layer(out)
         out = self.act(out)
         out = self.dropout_layer(out)
         # convolution blocks
         for l in range(self.n_conv_blocks):
             y = pad_layer(out, self.first_conv_layers[l])
-            y = self.act(y)
             y = self.norm_layer(y)
             y = append_cond(y, self.conv_affine_layers[l*2](cond))
+            y = self.act(y)
             y = self.dropout_layer(y)
             y = pad_layer(y, self.second_conv_layers[l])
-            y = self.act(y)
             if self.upsample[l] > 1:
                 y = pixel_shuffle_1d(y, scale_factor=self.upsample[l])
-                y = self.norm_layer(y)
-                y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
-                y = self.dropout_layer(y)
+            y = self.norm_layer(y)
+            y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
+            y = self.act(y)
+            y = self.dropout_layer(y)
+            if self.upsample[l] > 1:
                 out = y + upsample(out, scale_factor=self.upsample[l]) 
             else:
-                y = self.norm_layer(y)
-                y = append_cond(y, self.conv_affine_layers[l*2+1](cond))
-                y = self.dropout_layer(y)
                 out = y + out
         out = pad_layer(out, self.out_conv_layer)
         return out
