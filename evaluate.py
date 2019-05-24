@@ -322,8 +322,8 @@ class Evaluater(object):
     def infer_default(self):
         # using the first sample from in_test
         content_utt, _, cond_utt, _ = self.indexes[6]
-        #content_utt = '84_121123_000068_000000.wav'
-        #cond_utt = '1272_128104_000003_000005.wav'
+        #content_utt = 'p262_027.wav'
+        #cond_utt = 'p256_150.wav'
         print(content_utt, cond_utt)
         content = torch.from_numpy(self.pkl_data[content_utt]).cuda()
         cond = torch.from_numpy(self.pkl_data[cond_utt]).cuda()

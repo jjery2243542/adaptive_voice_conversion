@@ -399,13 +399,23 @@ class AE(nn.Module):
         self.speaker_encoder = SpeakerEncoder(**config['SpeakerEncoder']) 
         self.content_encoder = ContentEncoder(**config['ContentEncoder'])
         self.decoder = Decoder(**config['Decoder'])
+        self.dummy_speaker_encoder = DummyEncoder(cc(SpeakerEncoder(**config['SpeakerEncoder'])))
+        self.dummy_content_encoder = DummyEncoder(cc(ContentEncoder(**config['ContentEncoder'])))
 
-    def forward(self, x):
+    def forward(self, x, x_neg):
         emb = self.speaker_encoder(x)
         enc = self.content_encoder(x)
-        noise = enc.new(*enc.size()).normal_(0, 1)
-        dec = self.decoder(enc + noise, emb)
-        return enc, emb, dec
+        dec = self.decoder(enc, emb)
+        emb_neg = self.speaker_encoder(x_neg)
+        enc_neg = self.content_encoder(x_neg)
+        dec_syn_enc = self.decoder(enc, emb_neg)
+        dec_syn_emb = self.decoder(enc_neg, emb)
+        # latent reconstruction 
+        self.dummy_speaker_encoder.load(self.speaker_encoder)
+        emb_rec = self.dummy_speaker_encoder(dec_syn_emb)
+        self.dummy_content_encoder.load(self.content_encoder)
+        enc_rec = self.dummy_content_encoder(dec_syn_enc)
+        return enc, emb, dec, enc_rec, emb_rec
 
     def inference(self, x, x_cond):
         emb = self.speaker_encoder(x_cond)
