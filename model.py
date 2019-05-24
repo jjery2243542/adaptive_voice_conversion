@@ -405,11 +405,13 @@ class AE(nn.Module):
     def forward(self, x, x_neg):
         emb = self.speaker_encoder(x)
         enc = self.content_encoder(x)
+        #noise = enc.new(*enc.size()).normal_(0, 1) 
         dec = self.decoder(enc, emb)
         emb_neg = self.speaker_encoder(x_neg)
         enc_neg = self.content_encoder(x_neg)
-        dec_syn_enc = self.decoder(enc, emb_neg)
+        #noise = enc.new(*enc.size()).normal_(0, 1) 
         dec_syn_emb = self.decoder(enc_neg, emb)
+        dec_syn_enc = self.decoder(enc, emb_neg)
         # latent reconstruction 
         self.dummy_speaker_encoder.load(self.speaker_encoder)
         emb_rec = self.dummy_speaker_encoder(dec_syn_emb)

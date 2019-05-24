@@ -84,15 +84,17 @@ class Solver(object):
         loss_rec = 0.5 * criterion(dec, x) + 0.5 * criterion(dec[:, :n_priority_freq], x[:, :n_priority_freq])
         return loss_rec
 
-    def ae_step(self, data, lambda_latent):
+    def ae_step(self, data, lambda_latent, lambda_kl):
         x, x_neg = [cc(tensor) for tensor in data]
         enc, emb, dec, enc_rec, emb_rec = self.model(x, x_neg)
         criterion = nn.L1Loss()
         loss_rec = criterion(dec, x)
         loss_sl = criterion(emb_rec, emb) 
-        loss_cl = criterion(enc_rec, enc) 
+        loss_cl = criterion(enc_rec, enc)
+        loss_kl = torch.mean(enc ** 2)
         loss = self.config['lambda']['lambda_rec'] * loss_rec + \
-                lambda_latent * (loss_sl + loss_cl)
+                lambda_latent * (loss_sl + loss_cl) + \
+                lambda_kl * loss_kl
         self.opt.zero_grad()
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 
@@ -101,27 +103,35 @@ class Solver(object):
         meta = {'loss_rec': loss_rec.item(),
                 'loss_sl': loss_sl.item(),
                 'loss_cl': loss_cl.item(),
+                'loss_kl': loss_kl.item(),
                 'grad_norm': grad_norm}
         return meta
 
     def train(self, n_iterations):
         for iteration in range(n_iterations):
-            if iteration >= self.config['annealing_iters']:
+            if iteration >= self.config['annealing_iters']['latent']:
                 lambda_latent = self.config['lambda']['lambda_latent']
             else:
                 lambda_latent = self.config['lambda']['lambda_latent'] * \
-                        (iteration + 1) / self.config['annealing_iters'] 
+                        (iteration + 1) / self.config['annealing_iters']['latent'] 
+            if iteration >= self.config['annealing_iters']['kl']:
+                lambda_kl = self.config['lambda']['lambda_kl']
+            else:
+                lambda_kl = self.config['lambda']['lambda_kl'] * \
+                        (iteration + 1) / self.config['annealing_iters']['kl'] 
             data = next(self.train_iter)
-            meta = self.ae_step(data, lambda_latent)
+            meta = self.ae_step(data, lambda_latent, lambda_kl)
             # add to logger
             if iteration % self.args.summary_steps == 0:
                 self.logger.scalars_summary(f'{self.args.tag}/ae_train', meta, iteration)
             loss_rec = meta['loss_rec']
             loss_sl = meta['loss_sl']
             loss_cl = meta['loss_cl']
+            loss_kl = meta['loss_kl']
 
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
-                    f'loss_sl={loss_sl:.2f}, loss_cl={loss_cl:.2f}, lambda={lambda_latent:.1e}     ', end='\r')
+                    f'loss_sl={loss_sl:.2f}, loss_cl={loss_cl:.2f}, loss_kl={loss_kl:.2f}, '
+                    f'lambda_latent={lambda_latent:.1e}, lambda_kl={lambda_kl:.1e}     ', end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration)
                 print()

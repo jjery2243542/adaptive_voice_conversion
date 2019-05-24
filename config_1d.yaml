@@ -46,5 +46,8 @@ optimizer:
 lambda:
     lambda_rec: 10
     lambda_latent: 0.1
-annealing_iters: 50000
+    lambda_kl: 0.1
+annealing_iters: 
+    latent: 50000
+    kl: 50000
 sample_rate: 24000
