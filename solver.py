@@ -130,8 +130,7 @@ class Solver(object):
             loss_kl = meta['loss_kl']
 
             print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
-                    f'loss_sl={loss_sl:.2f}, loss_cl={loss_cl:.2f}, loss_kl={loss_kl:.2f}, '
-                    f'lambda_latent={lambda_latent:.1e}, lambda_kl={lambda_kl:.1e}     ', end='\r')
+                    f'loss_sl={loss_sl:.2f}, loss_cl={loss_cl:.2f}, loss_kl={loss_kl:.2f}      ', end='\r')
             if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
                 self.save_model(iteration=iteration)
                 print()
