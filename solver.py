@@ -89,7 +89,7 @@ class Solver(object):
         enc, emb, dec = self.model(x)
         #loss_rec = self.weighted_loss(dec, x)
         criterion = nn.L1Loss()
-        loss_rec = criterion(dec, x)
+        loss_rec = torch.mean((dec - x) ** 2)
         loss_kl = torch.mean(enc ** 2)
         loss = self.config['lambda']['lambda_rec'] * loss_rec + \
                 lambda_kl * loss_kl
