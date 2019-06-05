@@ -333,7 +333,8 @@ class ContentEncoder(nn.Module):
         self.second_conv_layers = nn.ModuleList([nn.Conv1d(c_h, c_h, kernel_size=kernel_size, stride=sub) 
             for sub, _ in zip(subsample, range(n_conv_blocks))])
         self.norm_layer = nn.InstanceNorm1d(c_h, affine=False)
-        self.out_conv_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
+        self.mean_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
+        self.std_layer = nn.Conv1d(c_h, c_out, kernel_size=1)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
@@ -356,8 +357,9 @@ class ContentEncoder(nn.Module):
             if self.subsample[l] > 1:
                 out = F.avg_pool1d(out, kernel_size=self.subsample[l], ceil_mode=True)
             out = y + out
-        out = pad_layer(out, self.out_conv_layer)
-        return out
+        mu = pad_layer(out, self.mean_layer)
+        log_sigma = pad_layer(out, self.std_layer)
+        return mu, log_sigma
 
 class Decoder(nn.Module):
     def __init__(self, 
@@ -381,8 +383,8 @@ class Decoder(nn.Module):
         self.out_conv_layer = f(nn.Conv1d(c_h, c_out, kernel_size=1))
         self.dropout_layer = nn.Dropout(p=dropout_rate)
 
-    def forward(self, x, cond):
-        out = pad_layer(x, self.in_conv_layer)
+    def forward(self, z, cond):
+        out = pad_layer(z, self.in_conv_layer)
         out = self.norm_layer(out)
         out = self.act(out)
         out = self.dropout_layer(out)
@@ -416,15 +418,15 @@ class AE(nn.Module):
 
     def forward(self, x):
         emb = self.speaker_encoder(x)
-        enc = self.content_encoder(x)
-        noise = enc.new(*enc.size()).normal_(0, 1)
-        dec = self.decoder(enc + noise, emb)
-        return enc, emb, dec
+        mu, log_sigma = self.content_encoder(x)
+        eps = log_sigma.new(*log_sigma.size()).normal_(0, 1)
+        dec = self.decoder(mu + torch.exp(log_sigma / 2) * eps, emb)
+        return mu, log_sigma, emb, dec
 
     def inference(self, x, x_cond):
         emb = self.speaker_encoder(x_cond)
-        enc = self.content_encoder(x)
-        dec = self.decoder(enc, emb)
+        mu, _ = self.content_encoder(x)
+        dec = self.decoder(mu, emb)
         return dec
 
     def get_speaker_embeddings(self, x):

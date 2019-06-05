@@ -86,11 +86,10 @@ class Solver(object):
 
     def ae_step(self, data, lambda_kl):
         x, _ = [cc(tensor) for tensor in data]
-        enc, emb, dec = self.model(x)
-        #loss_rec = self.weighted_loss(dec, x)
+        mu, log_sigma, emb, dec = self.model(x)
         criterion = nn.L1Loss()
-        loss_rec = torch.mean((dec - x) ** 2)
-        loss_kl = torch.mean(enc ** 2)
+        loss_rec = criterion(dec, x)
+        loss_kl = torch.mean(0.5 * torch.exp(log_sigma) + mu ** 2 - 1 - log_sigma)
         loss = self.config['lambda']['lambda_rec'] * loss_rec + \
                 lambda_kl * loss_kl
         self.opt.zero_grad()
