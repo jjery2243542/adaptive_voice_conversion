@@ -18,37 +18,6 @@ class DummyEncoder(object):
     def __call__(self, x):
         return self.encoder(x)
 
-def cal_gradpen(netD, real_data, real_cond, fake_data, fake_cond, center=0, alpha=None, device='cuda'):
-    if alpha is not None:
-        alpha = torch.tensor(alpha, device=device)  # torch.rand(real_data.size(0), 1, device=device)
-    else:
-        alpha = torch.rand(real_data.size(0), 1, device=device)
-    alpha_exp = alpha.unsqueeze(2).expand(real_data.size())
-    interpolates = alpha_exp * real_data + ((1 - alpha_exp) * fake_data)
-    alpha_exp = alpha.expand(real_cond.size())
-    interpolates_cond = alpha_exp * real_cond + ((1 - alpha_exp) * fake_cond) 
-    interpolates.requires_grad_(True)
-    interpolates_cond.requires_grad_(True)
-    disc_interpolates = netD(interpolates, interpolates_cond)
-    gradients_x = ag.grad(outputs=disc_interpolates, inputs=interpolates,
-                        grad_outputs=torch.ones(disc_interpolates.size()).to(device),
-                        create_graph=True, retain_graph=True, only_inputs=True)[0]
-    gradients_c = ag.grad(outputs=disc_interpolates, inputs=interpolates_cond,
-                        grad_outputs=torch.ones(disc_interpolates.size()).to(device),
-                        create_graph=True, retain_graph=True, only_inputs=True)[0]
-    gradient_penalty_x = ((gradients_x.norm(2, dim=1) - center) ** 2).mean()
-    gradient_penalty_c = ((gradients_c.norm(2, dim=1) - center) ** 2).mean()
-    return gradient_penalty_x + gradient_penalty_c
-
-def compute_grad(d_out, x_in, center=0):
-    # add activation sigmoid
-    #d_out = torch.sigmoid(d_out)
-    gradients = ag.grad(
-            outputs=d_out, inputs=x_in, grad_outputs=d_out.new_ones(d_out.size()), 
-            create_graph=True, retain_graph=True, only_inputs=True)[0]
-    gradient_penalty = ((gradients.norm(2, dim=1) - center) ** 2).mean()
-    return gradient_penalty
-
 def pad_layer(inp, layer, pad_type='reflect'):
     kernel_size = layer.kernel_size[0]
     if kernel_size % 2 == 0:
@@ -111,14 +80,6 @@ def append_cond(x, cond):
     p = cond.size(1) // 2
     mean, std = cond[:, :p], cond[:, p:]
     out = x * std.unsqueeze(dim=2) + mean.unsqueeze(dim=2)
-    return out
-
-def append_cond_2d(x, cond):
-    # x = [batch_size, channels, freq, length]
-    # cond = [batch_size, channels * 2]
-    p = cond.size(1) // 2
-    mean, std = cond[:, :p], cond[:, p:]
-    out = x * std.unsqueeze(dim=2).unsqueeze(dim=3) + mean.unsqueeze(dim=2).unsqueeze(dim=3)
     return out
 
 def conv_bank(x, module_list, act, pad_type='reflect'):
@@ -432,106 +393,3 @@ class AE(nn.Module):
     def get_speaker_embeddings(self, x):
         emb = self.speaker_encoder(x)
         return emb
-'''
-class SpeakerClassifier(nn.Module):
-    def __init__(self, input_size, c_in, output_dim, n_dense_layers, d_h, act):
-        super(SpeakerClassifier, self).__init__()
-        self.act = get_act(act)
-        dense_input_size = input_size * c_in
-        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size, d_h)] + 
-                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
-                [nn.Linear(d_h, output_dim)])
-
-    def forward(self, x):
-        out = flatten(x)
-        for layer in self.dense_layers[:-1]:
-            out = self.act(layer(out))
-        out = self.dense_layers[-1](out)
-        return out
-
-class SpeakerClassifier(nn.Module):
-    def __init__(self, input_size, c_in, output_dim, n_dense_layers, d_h, act):
-        super(SpeakerClassifier, self).__init__()
-        self.act = get_act(act)
-        dense_input_size = input_size * c_in
-        self.dense_layers = nn.ModuleList([nn.Linear(dense_input_size, d_h)] + 
-                [nn.Linear(d_h, d_h) for _ in range(n_dense_layers - 2)] + 
-                [nn.Linear(d_h, output_dim)])
-
-    def forward(self, x):
-        #out = flatten(x)
-        out = x
-        for layer in self.dense_layers[:-1]:
-            out = self.act(layer(out))
-        out = self.dense_layers[-1](out)
-        return out
-
-class Discriminator(nn.Module):
-    def __init__(self, input_size, 
-            c_in, c_h, c_cond, 
-            kernel_size, n_conv_blocks,
-            subsample, 
-            n_dense_layers, d_h, act, sn, ins_norm, dropout_rate):
-        super(Discriminator, self).__init__()
-        # input_size is a tuple
-        self.n_conv_blocks = n_conv_blocks
-        self.n_dense_layers = n_dense_layers
-        self.subsample = subsample
-        self.act = get_act(act)
-        self.ins_norm = ins_norm
-        # using spectral_norm if specified, or identity function
-        f = spectral_norm if sn else lambda x: x
-        self.in_conv_layer = f(nn.Conv2d(c_in, c_h, kernel_size=kernel_size))
-        self.first_conv_layers = nn.ModuleList(
-                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size)) for sub in subsample])
-        self.second_conv_layers = nn.ModuleList(
-                [f(nn.Conv2d(c_h, c_h, kernel_size=kernel_size, stride=(2, sub))) for sub in subsample])
-        self.norm_layer = nn.InstanceNorm2d(c_h)
-        # to process all frequency
-        dense_input_size = input_size 
-        for l, sub in zip(range(n_conv_blocks), self.subsample):
-            dense_input_size = (ceil(dense_input_size[0] / 2), ceil(dense_input_size[1] / sub))
-        self.out_conv_layer = f(nn.Conv2d(c_h, d_h, \
-                kernel_size=(dense_input_size[0], 1), \
-                stride=(1, 1)))
-        dense_input_size = dense_input_size[1] * d_h
-        self.dense_layers = nn.ModuleList([f(nn.Linear(dense_input_size, d_h))] + 
-                [f(nn.Linear(d_h, d_h)) for _ in range(n_dense_layers - 2)] + 
-                [f(nn.Linear(d_h, 1))])
-        self.linear_cond = f(nn.Linear(c_cond, d_h, bias=False))
-        self.dropout_layer = nn.Dropout(p=dropout_rate)
-
-    def conv_blocks(self, inp):
-        out = self.act(pad_layer_2d(inp, self.in_conv_layer))
-        for l in range(self.n_conv_blocks):
-            y = self.act(pad_layer_2d(out, self.first_conv_layers[l]))
-            y = self.dropout_layer(y)
-            y = self.act(pad_layer_2d(y, self.second_conv_layers[l]))
-            y = self.dropout_layer(y)
-            if self.ins_norm:
-                y = self.norm_layer(y)
-            out = y + F.avg_pool2d(out, kernel_size=(2, self.subsample[l]), ceil_mode=True)
-        out = self.out_conv_layer(out).squeeze(2)
-        out = self.act(out)
-        out = self.dropout_layer(out)
-        out = out.view(out.size(0), out.size(1) * out.size(2))
-        return out
-
-    def dense_blocks(self, inp):
-        h = inp
-        for l in range(self.n_dense_layers - 1):
-            h = self.dense_layers[l](h)
-            h = self.act(h)
-            h = self.dropout_layer(h)
-        out = self.dense_layers[-1](h)
-        return out, h
-
-    def forward(self, x, cond):
-        if x.dim() == 3:
-            x = x.unsqueeze(1)
-        x_vec = self.conv_blocks(x)
-        val, h = self.dense_blocks(x_vec)
-        cond_val = torch.sum(h * self.linear_cond(cond), dim=1, keepdim=True)
-        val += cond_val
-        return val, cond_val
-'''

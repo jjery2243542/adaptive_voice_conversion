@@ -25,12 +25,9 @@ if __name__ == '__main__':
     for i, utt_ind in enumerate(sample_utt_index_list):
         if i % 500 == 0:
             print(f'sample {i} samples')
-        pos_utt_id = utt_list[utt_ind]
-        neg_utt_id = random.choice(utt_list[:utt_ind] + utt_list[utt_ind + 1:])
-        t = random.randint(0, len(data[pos_utt_id]) - segment_size)
-        # random swap t1, t2
-        t_neg = random.randint(0, len(data[neg_utt_id]) - segment_size)
-        samples.append((pos_utt_id, t, neg_utt_id, t_neg))
+        utt_id = utt_list[utt_ind]
+        t = random.randint(0, len(data[utt_id]) - segment_size)
+        samples.append((utt_id, t))
 
     with open(sample_path, 'w') as f:
         json.dump(samples, f)

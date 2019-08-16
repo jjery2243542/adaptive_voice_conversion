@@ -1,4 +1,4 @@
-stage=2
+stage=0
 segment_size=128
 data_dir=/groups/jjery2243542/data/LibriTTS/sr_24000_mel_norm/
 raw_data_dir=/groups/jjery2243542/data/raw/LibriTTS/
