@@ -25,20 +25,20 @@ We provide the preprocess script for two datasets: VCTK and LibriTTS. The downlo
 The experiments in the paper is done on VCTK. 
 
 The preprocess code is at ```preprocess/```.
-The configuation for preprocessing is at *preprocess/libri.config* and *preprocess/vctk.config*. Depends on which dataset you used.
+The configuation for preprocessing is at ```preprocess/libri.config``` and ```preprocess/vctk.config```. Depends on which dataset you used.
 where:
 - **segment\_size** is the segment size for training. Default: 128
 - **data\_dir** is the directory to put preprocessed files. 
-- **raw\_data\_dir** is the directory to put the raw data. Like *LibriTTS/* or *VCTK-Corpus/*.
+- **raw\_data\_dir** is the directory to put the raw data. Like ```LibriTTS/``` or ```VCTK-Corpus/```.
 - *n_out_speakers* is the number of speakers for testing. Default: 20.
 - **test\_prop** is the proportion for validation utterances. Default: 0.1
 - **training\_samples** is the number of sampled segments for training (we sample it in the preprocess stage). Default: 10000000.
 - **testing_samples** is the number of sampled segments for testing. Default: 10000.
 - **n\_utt\_attr** is the number of utterances to compute mean and standard deviation for normalization. Default: 5000.
+- **train_set**: only for LibriTTS. The subset used for training. Default: train-clean-100.
+- ***test_set*: only for LibriTTS. The subset used for testing. Default: dev-clean.
 
-Once you edited the config file. You can run *preprocess_vctk.sh* or *preprocess_libri.sh* to preprocess the dataset.
- 
-*preprocess_vctk.sh* 
+Once you edited the config file. You can run ```preprocess_vctk.sh``` or ```preprocess_libri.sh``` to preprocess the dataset.
 
 # Cite us
 Please cite our paper if you find this repository useful.
