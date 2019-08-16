@@ -40,21 +40,10 @@ if __name__ == '__main__':
     data_dir = sys.argv[1]
     output_dir = sys.argv[2]
     dev_proportion = float(sys.argv[3])
-    n_samples = int(sys.argv[4])
+    n_utts_attr = int(sys.argv[4])
+    train_set = sys.argv[5]
+    test_set = sys.argv[6]
 
-    train_set = 'train-clean-100'
-    test_set = 'dev-clean'
-
-#    speaker2path = get_speaker2path(data_dir, train_set)
-#
-#    train_paths, dev_paths = [], []
-#    for speaker_id in speaker2path:
-#        paths = speaker2path[speaker_id]
-#        random.shuffle(paths)
-#        dev_data_size = int(len(paths) * dev_proportion)
-#        train_paths += paths[:-dev_data_size]
-#        dev_paths += paths[-dev_data_size:]
-#
     paths = read_paths(data_dir, train_set)
     random.shuffle(paths)
     dev_data_size = int(len(paths) * dev_proportion)

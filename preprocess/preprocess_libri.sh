@@ -1,16 +1,7 @@
-stage=0
-segment_size=128
-data_dir=/groups/jjery2243542/data/LibriTTS/sr_24000_mel_norm/
-raw_data_dir=/groups/jjery2243542/data/raw/LibriTTS/
-test_prop=0.05
-n_samples=5000
-training_samples=50000000
-testing_samples=10000
-
-twice_segment_size=$(( $segment_size * 2 ))
+. libri.config
 
 if [ $stage -le 0 ]; then
-    python3 make_datasets_libri.py $raw_data_dir/ $data_dir $test_prop $n_samples
+    python3 make_datasets_libri.py $raw_data_dir/ $data_dir $test_prop $n_utts_attr $train_set $test_set
 fi
 
 if [ $stage -le 1 ]; then
