@@ -24,7 +24,7 @@ We provide the preprocess script for two datasets: VCTK and LibriTTS. The downlo
 
 The experiments in the paper is done on VCTK. 
 
-The preprocess code is at *preprocess/*.
+The preprocess code is at ```preprocess/```.
 The configuation for preprocessing is at *preprocess/libri.config* and *preprocess/vctk.config*. Depends on which dataset you used.
 where:
 - **segment\_size** is the segment size for training. Default: 128
