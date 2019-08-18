@@ -79,7 +79,7 @@ if __name__ == '__main__':
             filename = path.strip().split('/')[-1]
             mel, mag = spec_feature_extraction(path)
             data[filename] = mel
-            if dset == 'train' and i < n_samples:
+            if dset == 'train' and i < n_utts_attr:
                 all_train_data.append(mel)
         if dset == 'train':
             all_train_data = np.concatenate(all_train_data)

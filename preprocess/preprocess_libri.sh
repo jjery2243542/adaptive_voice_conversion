@@ -5,7 +5,7 @@ if [ $stage -le 0 ]; then
 fi
 
 if [ $stage -le 1 ]; then
-    python3 reduce_dataset.py $data_dir/train.pkl $data_dir/train_$twice_segment_size.pkl $twice_segment_size
+    python3 reduce_dataset.py $data_dir/train.pkl $data_dir/train_$segment_size.pkl 
 fi
 
 if [ $stage -le 2 ]; then
