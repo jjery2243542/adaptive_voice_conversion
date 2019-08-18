@@ -6,13 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 import pickle
-from model import AE, LatentDiscriminator
+from model import AE
 from data_utils import get_data_loader
 from data_utils import PickleDataset
 from utils import *
 from functools import reduce
 from collections import defaultdict
-
 
 class Solver(object):
     def __init__(self, config, args):
@@ -35,334 +34,86 @@ class Solver(object):
         self.save_config()
 
         if args.load_model:
-            self.load_model(args.load_opt, args.load_dis)
+            self.load_model()
 
-    def save_model(self, iteration, stage):
+    def save_model(self, iteration):
         # save model and discriminator and their optimizer
-        torch.save(self.model.state_dict(), f'{self.args.store_model_path}.{stage}.ckpt')
-        torch.save(self.gen_opt.state_dict(), f'{self.args.store_model_path}.{stage}.opt')
-        torch.save(self.discr.state_dict(), f'{self.args.store_model_path}.{stage}.discr')
-        torch.save(self.dis_opt.state_dict(), f'{self.args.store_model_path}.{stage}.discr.opt')
+        torch.save(self.model.state_dict(), f'{self.args.store_model_path}.ckpt')
+        torch.save(self.opt.state_dict(), f'{self.args.store_model_path}.opt')
 
     def save_config(self):
         with open(f'{self.args.store_model_path}.config.yaml', 'w') as f:
-            yaml.dump(vars(self.config))
+            yaml.dump(self.config, f)
         with open(f'{self.args.store_model_path}.args.yaml', 'w') as f:
-            yaml.dump(vars(self.args))
+            yaml.dump(vars(self.args), f)
         return
 
-    def load_model(self, load_opt, load_dis):
-        print(f'Load model from {self.args.load_model_path}, load_opt={load_opt}, load_dis={load_dis}')
+    def load_model(self):
+        print(f'Load model from {self.args.load_model_path}')
         self.model.load_state_dict(torch.load(f'{self.args.load_model_path}.ckpt'))
-        if load_dis:
-            self.discr.load_state_dict(torch.load(f'{self.args.load_model_path}.discr'))
-        if load_opt:
-            self.gen_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
-        if load_dis and load_opt:
-            self.dis_opt.load_state_dict(torch.load(f'{self.args.load_model_path}.discr.opt'))
+        self.opt.load_state_dict(torch.load(f'{self.args.load_model_path}.opt'))
         return
 
     def get_data_loaders(self):
         data_dir = self.args.data_dir
-
         self.train_dataset = PickleDataset(os.path.join(data_dir, f'{self.args.train_set}.pkl'), 
                 os.path.join(data_dir, self.args.train_index_file), 
-                segment_size=self.config.segment_size)
-
-        self.val_dataset = PickleDataset(os.path.join(data_dir, f'{self.args.val_set}.pkl'), 
-                os.path.join(data_dir, self.args.val_index_file), 
-                segment_size=self.config.segment_size)
-
-        self.train_loader = get_data_loader(self.train_dataset, 
-                batch_size=self.config.batch_size, 
-                shuffle=self.config.shuffle, 
+                segment_size=self.config['data_loader']['segment_size'])
+        self.train_loader = get_data_loader(self.train_dataset,
+                frame_size=self.config['data_loader']['frame_size'],
+                batch_size=self.config['data_loader']['batch_size'], 
+                shuffle=self.config['data_loader']['shuffle'], 
                 num_workers=4, drop_last=False)
-
-        self.val_loader = get_data_loader(self.val_dataset, 
-                batch_size=self.config.batch_size, 
-                shuffle=self.config.shuffle, 
-                num_workers=4, drop_last=False)
-
         self.train_iter = infinite_iter(self.train_loader)
         return
 
     def build_model(self): 
         # create model, discriminator, optimizers
-        self.model = cc(AE(c_in=self.config.c_in,
-                c_h=self.config.c_h,
-                c_latent=self.config.c_latent,
-                c_cond=self.config.c_cond,
-                c_out=self.config.c_in,
-                kernel_size=self.config.kernel_size,
-                bank_size=self.config.bank_size,
-                bank_scale=self.config.bank_scale,
-                s_enc_n_conv_blocks=self.config.s_enc_n_conv_blocks,
-                s_enc_n_dense_blocks=self.config.s_enc_n_dense_blocks,
-                d_enc_n_conv_blocks=self.config.d_enc_n_conv_blocks,
-                d_enc_n_dense_blocks=self.config.d_enc_n_dense_blocks,
-                s_subsample=self.config.s_subsample,
-                d_subsample=self.config.d_subsample,
-                dec_n_conv_blocks=self.config.dec_n_conv_blocks,
-                dec_n_dense_blocks=self.config.dec_n_dense_blocks,
-                upsample=self.config.upsample,
-                act=self.config.act,
-                dropout_rate=self.config.dropout_rate))
+        self.model = cc(AE(self.config))
         print(self.model)
-
-        discr_input_size = self.config.segment_size / reduce(lambda x, y: x*y, self.config.d_subsample)
-        self.discr = cc(LatentDiscriminator(input_size=discr_input_size,
-                output_size=1, 
-                c_in=self.config.c_latent, 
-                c_h=self.config.dis_c_h, 
-                kernel_size=self.config.dis_kernel_size,
-                n_conv_layers=self.config.dis_n_conv_layers,
-                n_dense_layers=self.config.dis_n_dense_layers,
-                d_h=self.config.dis_d_h, 
-                act=self.config.act, 
-                dropout_rate=self.config.dis_dropout_rate))
-        print(self.discr)
-        self.gen_opt = torch.optim.Adam(self.model.parameters(), 
-                lr=self.config.gen_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad)  
-        self.dis_opt = torch.optim.Adam(self.discr.parameters(), 
-                lr=self.config.dis_lr, betas=(self.config.beta1, self.config.beta2), 
-                amsgrad=self.config.amsgrad)  
-        print(self.gen_opt)
-        print(self.dis_opt)
-        self.noise_adder = NoiseAdder(0, self.config.gaussian_std)
+        optimizer = self.config['optimizer']
+        self.opt = torch.optim.Adam(self.model.parameters(), 
+                lr=optimizer['lr'], betas=(optimizer['beta1'], optimizer['beta2']), 
+                amsgrad=optimizer['amsgrad'], weight_decay=optimizer['weight_decay'])
+        print(self.opt)
         return
 
-    # DEPRECATED
-    #def val_step(self, data):
-    #    self.model.eval()
-    #    x, x_pos, x_neg = [cc(tensor) for tensor in data]
-    #    enc, enc_pos, enc_neg, dec, emb, emb_pos = self.model(x, x_pos, x_neg)
-
-    #    loss_rec = torch.mean(torch.abs(x - dec))
-    #    loss_sim = torch.mean((enc_pos - enc) ** 2)
-
-    #    with torch.no_grad():
-    #        pos_probs = self.discr(enc, enc_pos)
-    #        neg_probs = self.discr(enc, enc_neg)
-
-    #        zeros_label = pos_probs.new_zeros(*pos_probs.size())
-    #        ones_label = pos_probs.new_ones(*pos_probs.size())
-
-    #        loss_pos = F.binary_cross_entropy(pos_probs, ones_label)
-    #        loss_neg = F.binary_cross_entropy(neg_probs, zeros_label)
-
-    #        loss_dis = loss_pos + loss_neg
-
-    #        acc_pos = torch.mean((pos_probs >= 0.5).float())
-    #        acc_neg = torch.mean((neg_probs < 0.5).float())
-    #        acc = (acc_pos + acc_neg) / 2
-
-    #    meta = {'loss_rec': loss_rec.item(),
-    #            'loss_sim': loss_sim.item(),
-    #            'loss_pos': loss_pos.item(),
-    #            'loss_neg': loss_neg.item(),
-    #            'loss_dis': loss_dis.item(),
-    #            'acc_pos': acc_pos.item(),
-    #            'acc_neg': acc_neg.item(),
-    #            'acc': acc.item()}
-
-    #    return meta
-
-    def ae_pretrain_step(self, data):
-        x, x_pos, x_neg = [cc(tensor) for tensor in data]
-        if self.config.add_gaussian:
-            enc, emb_pos, dec = self.model(self.noise_adder(x), 
-                    self.noise_adder(x_pos), 
-                    self.noise_adder(x_neg), 
-                    mode='ae')
-        else:
-            enc, emb_pos, dec = self.model(x, 
-                    x_pos, 
-                    x_neg,
-                    mode='ae')
-
-        loss_rec = torch.mean(torch.abs(x - dec))
-
-        meta = {'loss_rec': loss_rec.item()}
-
-        self.gen_opt.zero_grad()
-        loss_rec.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.gen_opt.step()
-        return meta
-
-    def ae_latent_step(self, data, lambda_sim, lambda_dis):
-        x, x_pos, x_neg = [cc(tensor) for tensor in data]
-        if self.config.add_gaussian:
-            enc, enc_pos, emb, emb_pos, dec = self.model(self.noise_adder(x), 
-                    self.noise_adder(x_pos), 
-                    self.noise_adder(x_neg),
-                    mode='latent_ae')
-        else:
-            enc, enc_pos, emb, emb_pos, dec = self.model(x, 
-                    x_pos, 
-                    x_neg, 
-                    mode='latent_ae')
-
-        loss_rec = torch.mean(torch.abs(x - dec))
-        loss_sim = torch.mean((emb - emb_pos) ** 2)
-
-        vals = self.discr(enc, enc_pos)
-
-        halfs_label = vals.new_ones(*vals.size()) * 0.5
-        criterion = nn.BCEWithLogitsLoss()
-
-        loss_dis = criterion(vals, halfs_label)
-
-        loss = loss_rec + lambda_sim * loss_sim + lambda_dis * loss_dis
-
+    def ae_step(self, data, lambda_kl):
+        x, _ = [cc(tensor) for tensor in data]
+        mu, log_sigma, emb, dec = self.model(x)
+        criterion = nn.L1Loss()
+        loss_rec = criterion(dec, x)
+        loss_kl = 0.5 * torch.mean(torch.exp(log_sigma) + mu ** 2 - 1 - log_sigma)
+        loss = self.config['lambda']['lambda_rec'] * loss_rec + \
+                lambda_kl * loss_kl
+        self.opt.zero_grad()
+        loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 
+                max_norm=self.config['optimizer']['grad_norm'])
+        self.opt.step()
         meta = {'loss_rec': loss_rec.item(),
-                'loss_sim': loss_sim.item(),
-                'loss_dis': loss_dis.item(),
-                'loss': loss.item()}
-
-        self.gen_opt.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.config.grad_norm)
-        self.gen_opt.step()
-
+                'loss_kl': loss_kl.item(),
+                'grad_norm': grad_norm}
         return meta
-
-    def dis_latent_step(self, data_pos, data_neg, lambda_dis):
-        x, x_pos, _ = [cc(tensor) for tensor in data_pos]
-        x_prime, _, x_neg = [cc(tensor) for tensor in data_neg]
-
-        with torch.no_grad():
-            if self.config.add_gaussian:
-                enc, enc_pos = self.model(self.noise_adder(x), 
-                        x_pos=self.noise_adder(x_pos), 
-                        x_neg=None, 
-                        mode='latent_dis_pos')
-                enc_prime, enc_neg = self.model(self.noise_adder(x_prime), 
-                        x_pos=None, 
-                        x_neg=self.noise_adder(x_neg), 
-                        mode='latent_dis_neg')
-            else:
-                enc, enc_pos = self.model(x, 
-                        x_pos=x_pos, 
-                        x_neg=None, 
-                        mode='latent_dis_pos')
-                enc_prime, enc_neg = self.model(x_prime, 
-                        x_pos=None, 
-                        x_neg=x_neg, 
-                        mode='latent_dis_neg')
-
-        # input for the discriminator
-        pos_vals = self.discr(enc, enc_pos)
-        neg_vals = self.discr(enc_prime, enc_neg)
-
-        ones_label = pos_vals.new_ones(*pos_vals.size())
-        zeros_label = neg_vals.new_zeros(*neg_vals.size())
-
-        criterion = nn.BCEWithLogitsLoss()
-
-        loss_pos = criterion(pos_vals, ones_label)
-        loss_neg = criterion(neg_vals, zeros_label)
-
-        loss_dis = (loss_pos + loss_neg) / 2
-        loss = lambda_dis * loss_dis
-
-        self.dis_opt.zero_grad()
-        loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.discr.parameters(), max_norm=self.config.grad_norm)
-        self.dis_opt.step()
-
-        pos_probs = torch.sigmoid(pos_vals)
-        neg_probs = torch.sigmoid(neg_vals)
-
-        acc_pos = torch.mean((pos_probs >= 0.5).float())
-        acc_neg = torch.mean((neg_probs < 0.5).float())
-        acc = (acc_pos + acc_neg) / 2
-
-        meta = {'loss_dis': loss_dis.item(),
-                'loss_pos': loss_pos.item(),
-                'loss_neg': loss_neg.item(),
-                'pos_prob': torch.mean(pos_probs).item(),
-                'neg_prob': torch.mean(neg_probs).item(),
-                'acc_pos': acc_pos.item(),
-                'acc_neg': acc_neg.item(),
-                'acc': acc.item()}
-
-        return meta
-
-    def ae_pretrain(self, n_iterations):
-        for iteration in range(n_iterations):
-            data = next(self.train_iter)
-            meta = self.ae_pretrain_step(data)
-
-            # add to logger
-            self.logger.scalars_summary(f'{self.args.tag}/ae_pretrain', meta, iteration)
-            loss_rec = meta['loss_rec']
-            print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}     ', end='\r')
-
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
-                self.save_model(iteration=iteration, stage='ae')
-                print()
-        return
-
-    def dis_latent_pretrain(self, n_iterations):
-        for iteration in range(n_iterations):
-            data, data_prime = next(self.train_iter), next(self.train_iter)
-            meta = self.dis_latent_step(data, data_prime, lambda_dis=1.0)
-            self.logger.scalars_summary(f'{self.args.tag}/dis_pretrain', meta, iteration)
-
-            loss_pos = meta['loss_pos']
-            loss_neg = meta['loss_neg']
-            acc = meta['acc']
-
-            print(f'D:[{iteration + 1}/{n_iterations}], loss_pos={loss_pos:.2f}, loss_neg={loss_neg:.2f}, '
-                    f'acc={acc:.2f}     ', end='\r')
-
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
-                self.save_model(iteration=iteration, stage='dis')
-                print()
-        return
 
     def train(self, n_iterations):
         for iteration in range(n_iterations):
-            # calculate linear increasing lambda_dis
-            if iteration >= self.config.sched_iters:
-                lambda_dis = self.config.lambda_dis
+            if iteration >= self.config['annealing_iters']:
+                lambda_kl = self.config['lambda']['lambda_kl']
             else:
-                lambda_dis = self.config.lambda_dis * (iteration + 1) / self.config.sched_iters
-            # AE step
-            for ae_step in range(self.config.ae_steps):
-                data = next(self.train_iter)
-                gen_meta = self.ae_latent_step(data, lambda_sim=self.config.lambda_sim, lambda_dis=lambda_dis)
-                self.logger.scalars_summary(f'{self.args.tag}/ae_train', gen_meta, 
-                        iteration * self.config.ae_steps + ae_step)
+                lambda_kl = self.config['lambda']['lambda_kl'] * (iteration + 1) / self.config['annealing_iters'] 
+            data = next(self.train_iter)
+            meta = self.ae_step(data, lambda_kl)
+            # add to logger
+            if iteration % self.args.summary_steps == 0:
+                self.logger.scalars_summary(f'{self.args.tag}/ae_train', meta, iteration)
+            loss_rec = meta['loss_rec']
+            loss_kl = meta['loss_kl']
 
-            # D step
-            for dis_step in range(self.config.dis_steps):
-                data, data_prime = next(self.train_iter), next(self.train_iter)
-                dis_meta = self.dis_latent_step(data, data_prime, lambda_dis=1.0)
-                self.logger.scalars_summary(f'{self.args.tag}/dis_train', dis_meta, 
-                        iteration * self.config.dis_steps + dis_step)
-
-            loss_rec = gen_meta['loss_rec']
-            loss_sim = gen_meta['loss_sim']
-            loss_dis = gen_meta['loss_dis']
-            acc = dis_meta['acc']
-
-            print(f'[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, loss_sim={loss_sim:.2f}, '
-                    f'loss_dis={loss_dis:.2f}, acc={acc:.2f}, lambda_dis={lambda_dis:.1e}     ', 
-                    end='\r')
-
-            if (iteration + 1) % self.args.summary_steps == 0 or iteration + 1 == n_iterations:
+            print(f'AE:[{iteration + 1}/{n_iterations}], loss_rec={loss_rec:.2f}, '
+                    f'loss_kl={loss_kl:.2f}, lambda={lambda_kl:.1e}     ', end='\r')
+            if (iteration + 1) % self.args.save_steps == 0 or iteration + 1 == n_iterations:
+                self.save_model(iteration=iteration)
                 print()
-                self.save_model(iteration=iteration, stage='main')
+        return
 
-                # don't need to do validation
-                #total_meta = defaultdict(lambda : 0)
-                #for data in self.val_loader:
-                #    meta = self.val_step(data)
-                #    for key, val in meta:
-                #        total_meta[key] += val
-
-                #avg_meta = {key: val / len(self.val_loader) for key, val in total_meta.items()}
-                #self.logger.scalars_summary(f'{self.args.tag}/validation', avg_meta, iteration)
