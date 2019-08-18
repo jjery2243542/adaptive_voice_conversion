@@ -41,7 +41,7 @@ class Inferencer(object):
 
     def load_model(self):
         print(f'Load model from {self.args.model}')
-        self.model.load_state_dict(torch.load(f'{self.args.model}.ckpt'))
+        self.model.load_state_dict(torch.load(f'{self.args.model}'))
         return
 
     def build_model(self): 
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('-attr', '-a', help='attr file path')
     parser.add_argument('-config', '-c', help='config file path')
-    parser.add_argument('-model', '-m', help='model path (without .ckpt)')
+    parser.add_argument('-model', '-m', help='model path')
     parser.add_argument('-source', '-s', help='source wav path')
     parser.add_argument('-target', '-t', help='target wav path')
     parser.add_argument('-output', '-o', help='output wav path')

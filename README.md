@@ -1,6 +1,7 @@
 # One-shot Voice Conversion by Separating Speaker and Content Representations with Instance Normalization
 This is the official repository for the paper [One-shot Voice Conversion by Separating Speaker and Content Representations with Instance Normalization](https://arxiv.org/abs/1904.05742).
 By separately learning speaker and content representations, we can achieve one-shot VC by only one utterance from source speaker and one utterace from target speaker. 
+You can found the demo webpage [here](https://jjery2243542.github.io/one-shot-vc-demo/), and download the pretrain model from [here]().
 <img src="https://github.com/jjery2243542/adaptive_voice_conversion/blob/public/model.png" width="400" img align="right">
 # Dependencies
 - python 3.6+
@@ -42,16 +43,24 @@ Once you edited the config file, you can run ```preprocess_vctk.sh``` or ```prep
 
 # Training
 The default arguments can be found in ```train.sh```. The usage of each arguments are listed below. 
-- **-c**: the path of config file, the default parameters can be found at ```config.yaml```.
+- **-c**: the path of config file, the default hyper-parameters can be found at ```config.yaml```.
 - **-iters**: train the model with how many iterations. default: 200000
 - **-summary_steps**: record training loss every n steps.
 - **-t**: the tag for tensorboard.
-- **-train_set**: the data file for training (```train``` if the file is train.pkl). Default: train
-- **-train_index_file**: the name of training index file. Default: train_samples_128.json
+- **-train_set**: the data file for training (```train``` if the file is train.pkl). Default: ```train```
+- **-train_index_file**: the name of training index file. Default: ```train_samples_128.json```
 - **-data_dir**: the directory for processed data.
 - **-store_model_path**: the path to store the model.
 
-# Testing
+# Inference
+You can use ```inference.py``` to inference.
+- **-c**: the path of config file.
+- **-c**: the path of model checkpoint.
+- **-a**: the attribute file for normalization ad denormalization.
+- **-s**: the path of source file (.wav).
+- **-t**: the path of target file (.wav).
+- **-o**: the path of output converted file (.wav).
+
 # Reference
 Please cite our paper if you find this repository useful.
 ```
@@ -63,3 +72,5 @@ Please cite our paper if you find this repository useful.
 }
 ```
 
+# Contact
+If you have any question about the paper or the code, feel free to email me at [jjery2243542@gmail.com](jjery2243542@gmail.com).
