@@ -1,7 +1,7 @@
 # One-shot Voice Conversion by Separating Speaker and Content Representations with Instance Normalization
-This is the official repository for the paper [One-shot Voice Conversion by Separating Speaker and Content Representations with Instance Normalization](https://arxiv.org/abs/1904.05742).
+This is the official implementation of the paper [One-shot Voice Conversion by Separating Speaker and Content Representations with Instance Normalization](https://arxiv.org/abs/1904.05742).
 By separately learning speaker and content representations, we can achieve one-shot VC by only one utterance from source speaker and one utterace from target speaker. 
-You can found the demo webpage [here](https://jjery2243542.github.io/one-shot-vc-demo/), and download the pretrain model from [here]().
+You can found the demo webpage [here](https://jjery2243542.github.io/one-shot-vc-demo/), and download the pretrain model from [here](http://speech.ee.ntu.edu.tw/~jjery2243542/resource/model/is19/vctk_model.ckpt) and the coresponding normalization parameters for inference from [here](http://speech.ee.ntu.edu.tw/~jjery2243542/resource/model/is19/attr.pkl).
 <img src="https://github.com/jjery2243542/adaptive_voice_conversion/blob/public/model.png" width="400" img align="right">
 # Dependencies
 - python 3.6+

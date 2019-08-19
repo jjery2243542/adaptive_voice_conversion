@@ -1,7 +1,7 @@
 SpeakerEncoder:
     c_in: 512
-    c_h: 256
-    c_out: 256
+    c_h: 128
+    c_out: 128
     kernel_size: 5
     bank_size: 8
     bank_scale: 1
@@ -25,7 +25,7 @@ ContentEncoder:
     dropout_rate: 0
 Decoder:
     c_in: 128
-    c_cond: 256
+    c_cond: 128
     c_h: 128
     c_out: 512
     kernel_size: 5
