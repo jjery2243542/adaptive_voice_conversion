@@ -41,7 +41,9 @@ where:
 - **train_set**: only for LibriTTS. The subset used for training. Default: train-clean-100.
 - **test_set**: only for LibriTTS. The subset used for testing. Default: dev-clean.
 
-Once you edited the config file, you can run ```preprocess_vctk.sh``` or ```preprocess_libri.sh``` to preprocess the dataset.
+Once you edited the config file, you can run ```preprocess_vctk.sh``` or ```preprocess_libri.sh``` to preprocess the dataset. 
+<br>
+Also, you can change the feature extraction config in ```preprocess/tacotron/hyperparams.py```
 
 # Training
 The default arguments can be found in ```train.sh```. The usage of each arguments are listed below. 
