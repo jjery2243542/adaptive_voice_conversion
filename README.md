@@ -8,7 +8,9 @@ You can found the demo webpage [here](https://jjery2243542.github.io/one-shot-vc
 - pytorch 1.0.1
 - numpy 1.16.0
 - librosa 0.6.3
-- SoundFile 0.10.2 <br>
+- SoundFile 0.10.2 
+- tensorboardX
+<br>
 We also use some preprocess script from [Kyubyong/tacotron](https://github.com/Kyubyong/tacotron) and [magenta/magenta/models/gansynth](https://github.com/tensorflow/magenta/tree/master/magenta/models/gansynth).
 
 # Differences from the paper
