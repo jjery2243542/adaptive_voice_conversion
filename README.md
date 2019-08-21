@@ -59,7 +59,7 @@ The default arguments can be found in ```train.sh```. The usage of each argument
 # Inference
 You can use ```inference.py``` to inference.
 - **-c**: the path of config file.
-- **-c**: the path of model checkpoint.
+- **-m**: the path of model checkpoint.
 - **-a**: the attribute file for normalization ad denormalization.
 - **-s**: the path of source file (.wav).
 - **-t**: the path of target file (.wav).
