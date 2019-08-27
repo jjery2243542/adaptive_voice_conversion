@@ -79,7 +79,7 @@ class Solver(object):
         return
 
     def ae_step(self, data, lambda_kl):
-        x, _ = [cc(tensor) for tensor in data]
+        x = cc(data)
         mu, log_sigma, emb, dec = self.model(x)
         criterion = nn.L1Loss()
         loss_rec = criterion(dec, x)
