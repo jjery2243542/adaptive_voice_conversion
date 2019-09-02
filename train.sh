@@ -1,0 +1,1 @@
+python3 main.py -c config.yaml -d /groups/jjery2243542/data/vctk/trimmed_vctk_spectrograms/sr_24000_mel_norm -train_set train_128 -train_index_file train_samples_128.json -store_model_path /groups/jjery2243542/model/adaptive_vc/vctk_model -t vctk_model -iters 500000 -summary_step 500
